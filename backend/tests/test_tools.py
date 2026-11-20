@@ -49,7 +49,8 @@ def test_tool_schemas_have_no_identity():
 async def test_get_roster_own_only(deps_for):
     out = await run_tool("get_roster", GetRosterArgs(date="today"), deps_for("A-E01"))
     assert out.ok and out.kind == "roster_info"
-    assert out.data["trips"] == [{"date": "2026-11-20", "direction": "drop", "time": "21:00", "vehicle_no": out.data["trips"][0]["vehicle_no"]}]
+    assert out.data["trips"] == [{"date": "2026-11-20", "day": "today", "direction": "drop", "time": "21:00",
+                                  "vehicle_no": out.data["trips"][0]["vehicle_no"]}]
 
 
 async def test_check_cab_options_scoped(deps_for):

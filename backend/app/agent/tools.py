@@ -159,7 +159,8 @@ async def _get_roster(args: GetRosterArgs, deps, trip_date, base, _):
 
     entries = await call_tool("roster", read, deps.faults, retries=1)
     trips = [
-        {"date": e.trip_date.isoformat(), "direction": e.direction, "time": _trip_time(e.trip), "vehicle_no": e.trip.vehicle_no}
+        {"date": e.trip_date.isoformat(), "day": "today" if e.trip_date == today else "tomorrow",
+         "direction": e.direction, "time": _trip_time(e.trip), "vehicle_no": e.trip.vehicle_no}
         for e in entries
     ]
     return ToolOutcome("get_roster", True, "roster_info", {**base, "trips": trips})
