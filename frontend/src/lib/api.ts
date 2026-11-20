@@ -9,6 +9,7 @@ export type DemoGroup = {
 export type Me = { employee_id: string; name: string; role: Role; company_id: string; company_name: string };
 export type Trip = {
   trip_date: string;
+  day: "today" | "tomorrow";
   direction: "pickup" | "drop";
   time: string;
   vehicle_no: string;

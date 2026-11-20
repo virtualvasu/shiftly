@@ -36,8 +36,9 @@ REPLY_TIMEOUT_S = 1.5
 HARD_TURN_TIMEOUT_S = 10
 MAX_MESSAGE_CHARS = 1000
 STOP_KINDS = {"rejected", "tool_failure", "no_booking", "clarify"}
-REPHRASE_KINDS = {"applied", "already_applied", "rejected", "pending", "already_pending",
-                  "withdrawn", "status_info", "roster_info", "options_info"}
+# The LLM may only rephrase turns where nothing was refused or left pending; a refusal
+# or a mixed turn always uses the template, so it can't be reworded into a confirmation.
+REPHRASE_KINDS = {"applied", "already_applied", "withdrawn", "status_info", "roster_info"}
 TAKING_TOO_LONG = (
     "This is taking longer than it should. Please check your trips in a minute before trying again, "
     "or call the transport desk if it's urgent."

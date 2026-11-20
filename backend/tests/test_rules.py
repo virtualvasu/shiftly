@@ -135,3 +135,12 @@ def test_no_alternatives_when_current_cutoff_passed():
     current = trip(ACME, "19:00")
     desired = datetime(2026, 11, 20, 19, 30, tzinfo=IST)
     assert nearest_alternatives(ACME, current, _acme_r1_today_drop_options(), desired, NOW, TODAY) == []
+
+
+def test_departed_trip_cannot_be_changed_or_escalated():
+    # Review finding 2: a cab that has already left is not "past the cut-off", it's gone.
+    gone = trip(GLOBEX, "17:00")
+    v = check_change(GLOBEX, gone, None, "cancel", NOW, TODAY)
+    assert v.code == "DEPARTED" and v.escalatable is False
+    v2 = check_change(GLOBEX, gone, opt(GLOBEX, "21:00"), "reschedule", NOW, TODAY)
+    assert v2.code == "DEPARTED"

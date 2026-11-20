@@ -4,7 +4,7 @@
 
 Two layers:
 
-1. **Automated tests** (`backend/tests`, 164 tests): unit tests for rules, time
+1. **Automated tests** (`backend/tests`, 175 tests): unit tests for rules, time
    parsing, templates, the reply guard and the LLM clients; integration tests
    through the real HTTP API and a real Postgres, with a scripted fake LLM.
 2. **Evaluation set** (`backend/eval/cases.jsonl`, 41 cases): end-to-end
@@ -63,7 +63,7 @@ The same cases run in two modes:
 | safety | 4/4 |
 | tool_selection | 6/6 |
 
-All 164 automated tests pass (`docker compose run --rm tests`).
+All 175 automated tests pass (`docker compose run --rm tests`).
 
 ### Real model (Groq)
 
@@ -84,6 +84,19 @@ These were real bugs caught by tests or by reasoning about the requirements. Eac
 | A restart wiped pending requests | Sample data was re-seeded on every boot | Seed only an empty database |
 | The model could escalate without asking | `escalate=true` on the first message was honoured | Code allows escalation only for the exact change offered in the previous turn |
 | UI went blank after sending | A React effect returned `scrollIntoView()`'s Promise (newer Chrome) as its cleanup | Effect body in braces |
+| Two tests failed only inside the Docker image | The route serving the web UI caught every path, shadowing API routes (405 on an unknown POST) | UI served only as the fallback for a page request that would otherwise 404 |
+
+A final independent code review then found these, all fixed with a reproducing test first:
+
+| What failed | Fix |
+|---|---|
+| "Drop at 00:30" was re-asked forever (read as 00:30 or 12:30 *today*, both past) | Times just after midnight resolve to tonight; explicit 24-hour times are never flipped to PM |
+| A cab that had already left was treated as "past the cut-off" and could be escalated | New `DEPARTED` rule: "Your 09:00 pickup today has already left, so there's nothing to change." |
+| Expiry waited for the *requested* cab, so the employee could be told a cab that had already left was "still booked" | Expiry keyed on the earlier of the booked and requested cab |
+| A reworded refusal like "You're now on the 20:30 cab." passed the guard (no success keyword, allowed time) | Refusals, pending and mixed turns are never rephrased |
+| A direct change made while a request was pending could be undone by a later approval | The direct change withdraws the pending request; approval also checks the booked trip hasn't changed |
+| A booking that committed just before its timeout was reported as "nothing was changed" | After a booking timeout the agent re-reads what was written and reports it; lock waits capped at 1 s |
+| The trips panel labelled tomorrow's trips "Today" once today's was cancelled | The roster API returns the day label from the app clock |
 
 ## Known failures and limitations
 

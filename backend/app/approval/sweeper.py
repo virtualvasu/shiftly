@@ -9,7 +9,8 @@ from app.booking import AlreadyDecided, RequestNotFound
 
 log = logging.getLogger("app.sweeper")
 
-# A decision this close to the cab is too late to dispatch.
+# A decision this close to the earlier of the two cabs (booked or requested) is too
+# late: the employee must still be able to catch the one they're booked on.
 EXPIRY_LEAD = timedelta(minutes=15)
 
 
@@ -19,9 +20,9 @@ async def expire_stale(services) -> int:
         # System job: the only query that looks across companies, and it only
         # reads ids; each request is then settled within its own company.
         rows = await (await conn.execute(
-            "SELECT r.id, r.company_id, t.scheduled_at FROM shift_change_requests r "
-            "JOIN trips t ON t.id = COALESCE(r.to_trip_id, r.from_trip_id) "
-            "WHERE r.status = 'PENDING_APPROVAL'"
+            "SELECT r.id, r.company_id, LEAST(f.scheduled_at, COALESCE(t.scheduled_at, f.scheduled_at)) AS scheduled_at "
+            "FROM shift_change_requests r JOIN trips f ON f.id = r.from_trip_id "
+            "LEFT JOIN trips t ON t.id = r.to_trip_id WHERE r.status = 'PENDING_APPROVAL'"
         )).fetchall()
     expired = 0
     for row in rows:

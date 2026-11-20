@@ -231,7 +231,16 @@ async def _raise_request(args: RaiseRequestArgs, deps, trip_date, base, desired_
             escalate=args.escalate, conversation_id=deps.conversation_id,
         )
 
-    res = await call_tool("booking", write, deps.faults, retries=0)
+    before = await _latest_request_id(deps)
+    try:
+        res = await call_tool("booking", write, deps.faults, retries=0)
+    except ToolFailure:
+        # The write may have committed just before the timeout fired. Never say
+        # "nothing was changed" without checking.
+        landed = await _request_written_since(deps, before)
+        if landed is None:
+            raise
+        return landed
     if res.status == "PENDING_APPROVAL":
         try:
             await deps.services.approvals.on_pending(res.request_id, deps.ctx.company_id)
@@ -240,6 +249,35 @@ async def _raise_request(args: RaiseRequestArgs, deps, trip_date, base, desired_
             # approval thread (resume falls back to applying directly).
             log.exception("could not start approval thread for %s", res.request_id)
     return _booking_outcome(res, base, desired_at, args.change_type)
+
+
+async def _latest_request_id(deps: ToolDeps) -> str | None:
+    try:
+        async with deps.pool.connection() as conn:
+            req = await repo.latest_request(conn, deps.ctx)
+        return req.id if req else None
+    except Exception:
+        return None
+
+
+async def _request_written_since(deps: ToolDeps, before: str | None) -> ToolOutcome | None:
+    """If a booking timed out but its request row exists, describe what really happened."""
+    try:
+        async with deps.pool.connection() as conn:
+            req = await repo.latest_request(conn, deps.ctx)
+            if req is None or req.id == before or req.status not in ("APPLIED", "PENDING_APPROVAL"):
+                return None
+            data = await _status_data(conn, deps, req)
+            to_trip = await repo.get_trip(conn, deps.ctx.company_id, req.to_trip_id) if req.to_trip_id else None
+            from_trip = await repo.get_trip(conn, deps.ctx.company_id, req.from_trip_id)
+    except Exception:
+        return None
+    today = deps.clock.now().date()
+    data["day"] = "today" if from_trip.trip_date == today else "tomorrow"
+    if req.status == "APPLIED":
+        data["vehicle_no"] = (to_trip or from_trip).vehicle_no
+        return ToolOutcome("raise_shift_change_request", True, "applied", data)
+    return ToolOutcome("raise_shift_change_request", True, "pending", data)
 
 
 async def _status_data(conn, deps: ToolDeps, req) -> dict:

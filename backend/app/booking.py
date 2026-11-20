@@ -73,6 +73,8 @@ async def change_trip(
     now = clock.now()
     today = now.date()
     async with pool.connection() as conn, conn.transaction():
+        # Don't queue behind a busy cab for longer than the tool timeout allows.
+        await conn.execute("SET LOCAL lock_timeout = '1s'")
         company = await repo.get_company(conn, ctx.company_id)
         entry = await repo.get_roster_entry(conn, ctx, trip_date, direction, for_update=True)
         if entry is None:
@@ -107,6 +109,12 @@ async def change_trip(
                 await conn.execute("UPDATE roster SET status = 'cancelled' WHERE id = %s AND company_id = %s", (entry.id, ctx.company_id))
             else:
                 await conn.execute("UPDATE roster SET trip_id = %s WHERE id = %s AND company_id = %s", (target.trip.id, entry.id, ctx.company_id))
+            # A newer change by the employee replaces any request still waiting for a manager.
+            stale = await repo.find_pending_for_roster(conn, ctx.company_id, entry.id)
+            if stale is not None:
+                await repo.set_request_status(conn, ctx.company_id, stale.id, "WITHDRAWN", decided_by=ctx.employee_id,
+                                              decided_at=now, note="Replaced by a newer change")
+                await repo.insert_audit(conn, ctx.company_id, "employee", ctx.employee_id, "superseded", stale.id, {})
             req = await repo.insert_request(conn, {**base, "id": new_request_id(), "status": "APPLIED", "dedupe_key": key})
             await repo.insert_audit(conn, ctx.company_id, "employee", ctx.employee_id, "applied", req.id,
                                     {"from": current.id, "to": base["to_trip_id"], "type": change_type})
@@ -173,8 +181,8 @@ async def apply_decision(
 
         alternatives: list[TripOption] = []
         if kind == "approve":
-            if entry.status != "active":
-                status = "EXPIRED"  # the trip was cancelled meanwhile; nothing left to move
+            if entry.status != "active" or entry.trip.id != req.from_trip_id:
+                status = "EXPIRED"  # the trip changed meanwhile; approving would undo it
             elif req.change_type == "cancel":
                 await conn.execute("UPDATE roster SET status = 'cancelled' WHERE id = %s AND company_id = %s", (entry.id, company_id))
                 status = "APPROVED_APPLIED"

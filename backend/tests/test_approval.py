@@ -146,9 +146,11 @@ async def test_sweeper_expires(app_kwargs, clock):
     async with running_app(**{**app_kwargs, "llm": escalation_script()}) as (app, c):
         chat, rid = await escalate(c)
         services = app.state.services
-        clock.advance(100)  # 19:10, before the 19:15 dispatch lead for the 19:30 cab
+        # Review finding 3: expiry is keyed on the earlier cab (the booked 19:00), so the
+        # employee is told in time to still catch it.
+        clock.advance(70)   # 18:40, before 18:45 (19:00 minus the 15 min lead)
         assert await expire_stale(services) == 0
-        clock.advance(10)   # 19:20
+        clock.advance(10)   # 18:50
         assert await expire_stale(services) == 1
         assert await expire_stale(services) == 0
         text = await last_message(c, chat)
@@ -180,3 +182,21 @@ async def test_audit_trail(app_kwargs):
     actions = [(e["actor_id"], e["action"]) for e in a.json() if e["request_id"] == rid]
     assert ("A-E02", "escalated") in actions and ("A-M01", "approved_applied") in actions
     assert g.json() == []
+
+
+async def test_direct_change_supersedes_pending_request(app_kwargs, clock):
+    # Review finding 5: a later approval must not undo a newer change the employee made themselves.
+    clock.advance(1)  # 17:31: Asha's 19:30 target is past the cut-off, 22:00 is not
+    fake = FakeLLM([move("19:30"), move("19:30", escalate=True), move("22:00")])
+    async with running_app(**{**app_kwargs, "llm": fake}) as (app, c):
+        chat = await chat_as(c, "A-E01")
+        await chat.say("move my drop to 7:30 pm")
+        r = await chat.say("yes")
+        rid = r["outcomes"][0]["data"]["request_id"]
+        done = await chat.say("actually just make it 10 pm")
+        approve = await decide(c, "A-M01", rid, "approve")
+        status = (await fetchall(app.state.services.pool, "SELECT status FROM shift_change_requests WHERE id=%s", rid))[0]["status"]
+        trip = await roster_trip(app.state.services.pool, "A-E01")
+    assert done["outcomes"][0]["kind"] == "applied"
+    assert status == "WITHDRAWN" and approve.status_code == 409
+    assert trip == "acme-r1-1120-d-2200"

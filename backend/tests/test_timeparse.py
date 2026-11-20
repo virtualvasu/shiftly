@@ -31,3 +31,14 @@ def test_invalid_times():
 
 def test_time_already_past_is_none():
     assert resolve_time("17:00", TODAY, at("19:00"), NOW) is None
+
+
+def test_after_midnight_drop_means_next_day():
+    # Review finding 1: "00:30" next to a 19:00 drop is tonight after midnight, not 12:30.
+    assert resolve_time("00:30", TODAY, at("19:00"), NOW) == at("00:30", TOMORROW)
+
+
+def test_explicit_24h_time_is_never_flipped_to_pm():
+    from datetime import timedelta as td
+    assert resolve_time("00:30", TOMORROW, at("19:00", TOMORROW), NOW) == at("00:30", TOMORROW + td(days=1))
+    assert resolve_time("08:00", TODAY, at("19:00"), NOW) is None  # explicit morning time that has passed: ask

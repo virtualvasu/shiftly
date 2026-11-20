@@ -2,14 +2,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Trip } from "@/lib/api";
-import { dayLabel, directionHint, directionLabel, tripKey } from "@/lib/format";
+import { directionHint, directionLabel, tripKey } from "@/lib/format";
 import { Plate } from "./Plate";
 
 type Props = { trips: Trip[] | null; changed: Set<string> };
 
 export function TripsPanel({ trips, changed }: Props) {
-  const today = trips?.[0]?.trip_date ?? "";
-  const days = [...new Set((trips ?? []).map((t) => t.trip_date))];
+  const days = [...new Set((trips ?? []).map((t) => t.day))];
 
   return (
     <Card className="gap-0 py-0">
@@ -29,11 +28,11 @@ export function TripsPanel({ trips, changed }: Props) {
         {days.map((day) => (
           <section key={day} className="border-b last:border-b-0">
             <h3 className="px-5 pt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {dayLabel(day, today)}
+              {day === "today" ? "Today" : "Tomorrow"}
             </h3>
             <ul>
               {(trips ?? [])
-                .filter((t) => t.trip_date === day)
+                .filter((t) => t.day === day)
                 .map((t) => (
                   <li key={tripKey(t)} className="flex items-center gap-4 px-5 py-3">
                     <time

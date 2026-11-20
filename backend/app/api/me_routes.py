@@ -44,6 +44,7 @@ async def my_roster(request: Request, ctx: TenantContext = Depends(current_ctx))
     return [
         {
             "trip_date": e.trip_date.isoformat(),
+            "day": "today" if e.trip_date == today else "tomorrow",
             "direction": e.direction,
             "time": e.trip.scheduled_at.astimezone(IST).strftime("%H:%M"),
             "vehicle_no": e.trip.vehicle_no,

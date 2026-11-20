@@ -44,3 +44,12 @@ async def test_me_roster_isolation(app_kwargs):
     assert {x["route"] for x in g} == {"Hebbal"}
     today_drop = [x for x in a if x["trip_date"] == "2026-11-20" and x["direction"] == "drop"]
     assert today_drop[0]["time"] == "21:00"
+
+
+async def test_roster_api_labels_days_from_app_clock(app_kwargs):
+    # Review finding 7: after today's only trip is cancelled, tomorrow's must not show as "today".
+    async with running_app(**app_kwargs) as (app, c):
+        async with app.state.services.pool.connection() as conn:
+            await conn.execute("UPDATE roster SET status='cancelled' WHERE employee_id='G-E01' AND trip_date='2026-11-20'")
+        trips = (await c.get("/api/me/roster", headers=bearer(await get_token(c, "G-E01")))).json()
+    assert {t["day"] for t in trips} == {"tomorrow"}

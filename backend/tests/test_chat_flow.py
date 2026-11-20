@@ -186,7 +186,7 @@ async def test_false_confirmation_from_model_replaced(app_kwargs):
     async with running_app(**kw(app_kwargs, fake)) as (_, c):
         r = await (await chat_as(c, "A-E02")).say("move my drop to 7:30 pm")
     assert r["reply"] == ACME_CUTOFF
-    assert r["llm_calls"] == 2
+    assert r["llm_calls"] == 1 and fake.reply_calls == 0  # refusals are never rephrased
 
 
 async def test_safe_rephrase_used_and_ref_appended(app_kwargs):
@@ -242,7 +242,7 @@ async def test_offline_mode_end_to_end(app_kwargs, settings):
         second = await chat.say("yes please")
     assert first["reply"] == ACME_CUTOFF
     assert second["reply"].startswith("I've sent this to your transport manager (request SCR-")
-    assert second["llm_calls"] == 2
+    assert second["llm_calls"] == 1  # a pending reply is never rephrased
 
 
 async def test_escalation_without_prior_offer_is_not_escalated(app_kwargs):
@@ -263,3 +263,63 @@ async def test_escalation_for_a_different_change_needs_its_own_offer(app_kwargs)
         r = await chat.say("yes, but make it 8:30")
         rows = await fetchall(app.state.services.pool, "SELECT id FROM shift_change_requests")
     assert r["outcomes"][0]["kind"] == "rejected" and rows == []
+
+
+async def test_drop_after_midnight_offers_latest_cabs(app_kwargs):
+    fake = FakeLLM([move("00:30")])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "A-E01")).say("can I get a drop at 12:30 at night?")
+    assert r["outcomes"][0]["data"]["reason_code"] == "NO_SUCH_SLOT"
+    assert r["reply"] == "There's no drop cab at 00:30 on your route. Nearest: 23:30 or 23:00."
+
+
+async def test_departed_trip_plain_reply_no_request(app_kwargs, clock):
+    clock.advance(100)  # 19:10: G-E01's 19:00 drop has left
+    fake = FakeLLM([plan(call("raise_shift_change_request", date="today", direction="drop", change_type="cancel"))])
+    async with running_app(**kw(app_kwargs, fake)) as (app, c):
+        r = await (await chat_as(c, "G-E01")).say("cancel my drop today")
+        rows = await fetchall(app.state.services.pool, "SELECT id FROM shift_change_requests")
+    assert r["reply"] == "Your 19:00 drop today has already left, so there's nothing to change."
+    assert rows == []
+
+
+async def test_no_rephrase_on_rejection(app_kwargs):
+    # Review finding 4: "You're now on the 20:30 cab." has no success keyword and only allowed times.
+    fake = FakeLLM([move("20:00")], replies=["You're now on the 20:30 cab."])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "A-E01")).say("move my drop to 8 pm")
+    assert r["reply"] == "The 20:00 cab is full. Nearest free cabs: 19:30 or 20:30. Want one of those?"
+    assert fake.reply_calls == 0
+
+
+async def test_no_rephrase_on_mixed_turn(app_kwargs, clock):
+    clock.advance(60)  # 18:30: G-E01 tomorrow pickup can be cancelled, today's 19:00 drop is past Globex's 1 h cut-off
+    fake = FakeLLM([plan(
+        call("raise_shift_change_request", date="tomorrow", direction="pickup", change_type="cancel"),
+        call("raise_shift_change_request", date="today", direction="drop", change_type="cancel"),
+    )], replies=["Your 09:00 pickup and 19:00 drop are cancelled."])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "G-E01")).say("cancel my pickup tomorrow and my drop today")
+    assert [o["kind"] for o in r["outcomes"]] == ["applied", "rejected"]
+    assert fake.reply_calls == 0 and "can't change your 19:00 drop" in r["reply"]
+
+
+async def test_booking_timeout_after_commit_reports_truth(app_kwargs, monkeypatch):
+    # Review finding 6: the write committed but the caller timed out; don't say "nothing was changed".
+    import asyncio
+
+    from app.agent import tools
+
+    real = tools.change_trip
+
+    async def slow_after_commit(*a, **kw):
+        res = await real(*a, **kw)
+        await asyncio.sleep(2)
+        return res
+
+    monkeypatch.setattr(tools, "change_trip", slow_after_commit)
+    fake = FakeLLM([move("21:30")])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "A-E01")).say("move my drop to 9:30 pm")
+    assert r["outcomes"][0]["kind"] == "applied"
+    assert r["reply"].startswith("Done. Your drop today is now at 21:30")

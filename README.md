@@ -32,7 +32,7 @@ Open **http://localhost:8000** and pick a person to sign in as.
 ### Tests and evaluation
 
 ```bash
-docker compose run --rm tests                          # 164 tests, fake LLM, real Postgres
+docker compose run --rm tests                          # 175 tests, fake LLM, real Postgres
 docker compose run --rm tests python -m eval.run       # evaluation set -> backend/eval/results.jsonl
 docker compose run --rm tests python -m eval.run --mode real   # same cases against Groq (needs key)
 docker compose run --rm tests python -m eval.latency --n 40    # p95 latency with the real model
@@ -58,8 +58,9 @@ POST /api/chat  (JWT -> company, employee)
    │             escalation only if it was offered and accepted
  execute   code: tenant-scoped tools -> rule engine -> one DB transaction
    │
- respond   template built from the facts; LLM may rephrase it (last call),
-           a guard rejects any rephrase that invents a time, an id or a success
+ respond   template built from the facts; for successful or info-only turns the LLM
+           may rephrase it (last call), and a guard rejects any rephrase that
+           invents a time, an id or a success. Refusals are never rephrased.
            -> applied | rejected + next cabs | question | sent to manager (⏸)
 
 manager decision ──▶ approval workflow (own LangGraph thread, Postgres checkpoint)
@@ -77,12 +78,12 @@ manager decision ──▶ approval workflow (own LangGraph thread, Postgres che
 | Applying the change | `booking.py` (one transaction, row locks) | Correctness under concurrency |
 | Whether to escalate | Code checks the employee said yes to *this* offer | Model can't escalate on its own |
 | Times like "8" next to a 19:00 drop | `timeparse.py` | Deterministic; unclear times become a question |
-| The reply | Template from facts; LLM may only rephrase | A confident wrong confirmation is worse than none |
+| The reply | Template from facts; LLM may only rephrase successful or info-only turns | A confident wrong confirmation is worse than none |
 
 ### Staying under 4 LLM calls and 5 seconds
 
-- Fixed pipeline, not a free agent loop: **plan (1) + optional retry (1) + optional rephrase (1) = 3 max**. A per-message `LLMBudget` raises on a 5th call; every test turn asserts `llm_calls <= 4`. Typical turn: 2 calls; clarifying questions: 1.
-- Time budget per message: planner timeout 2.5 s, each tool 1.5 s (reads retried once), rephrase 1.5 s and **skipped when less than 1.5 s of the 4.5 s budget is left** (the template is used). A hard 10 s turn timeout returns a plain message instead of hanging.
+- Fixed pipeline, not a free agent loop: **plan (1) + optional retry (1) + optional rephrase (1) = 3 max**. A per-message `LLMBudget` raises on a 5th call; every test turn asserts `llm_calls <= 4`. Typical turn: 1–2 calls (refusals and questions: 1; successful changes: 2).
+- Time budget per message: planner timeout 2.5 s, each tool 1.5 s (reads retried once; a booking that times out is re-checked so the employee is never told "nothing changed" when it did), rephrase 1.5 s and **skipped when less than 1.5 s of the 4.5 s budget is left** (the template is used). A hard 10 s turn timeout returns a plain message instead of hanging.
 - Groq's free tier is fast enough for this pipeline. The measured p95 is in [docs/evaluation.md](docs/evaluation.md).
 
 ### Multi-company isolation
@@ -102,8 +103,8 @@ manager decision ──▶ approval workflow (own LangGraph thread, Postgres che
 | Seats filled per cab (policy cap on a 6-seat vehicle) | 4 | 6 |
 | Manager may override the cut-off | yes | yes |
 
-The cut-off applies to both the booked cab and the target cab. A full cab or a
-non-existent slot is never escalated (a manager can't create a seat); the agent
+The cut-off applies to both the booked cab and the target cab. A cab that has
+already left can't be changed at all. A full cab or a non-existent slot is never escalated (a manager can't create a seat); the agent
 offers the two nearest cabs that pass every rule.
 
 ### Manager approval and restarts
@@ -115,8 +116,10 @@ resumes that thread with `Command(resume=...)`, the decision is applied (approva
 overrides the cut-off and re-checks the seat) and the result is posted into the
 employee's conversation, both the message log and the chat graph's memory, so
 "ok, then 9?" works next. The same thread is resumed by the employee
-("withdraw it") or by an expiry sweeper (no decision 15 min before the cab:
+("withdraw it") or by an expiry sweeper (no decision 15 min before the earlier of the booked and requested cab:
 original trip kept, employee told to call the desk).
+If the employee makes a different change themselves while waiting, the pending
+request is withdrawn, so a later approval can't undo it.
 
 Restart proof: `test_approval.py::test_restart_then_manager_approves` shuts the
 app down, boots a new one on the same DB, asserts the workflow is still paused at
@@ -155,7 +158,7 @@ transactions on Postgres (run repeatedly while building).
 2. **No seat hold while waiting for the manager.** Approvals can take hours and seats are scarce; holding one would block other employees for a request that may be rejected. The cost is that an approved change can find the cab full, so that path is handled and tested explicitly ("filled up in the meantime").
 3. **Postgres only, no Redis.** One store gives row locks, a unique index for idempotency, and the LangGraph checkpointer. Fewer moving parts to run and explain.
 4. **Separate approval thread instead of pausing the chat thread.** An approval can take hours; pausing the chat would block every other message in it. The pause is still a real LangGraph interrupt, and the decision still lands in the same conversation.
-5. **Templates as the source of truth, LLM only rephrases.** Replies are a bit less varied, and a false confirmation can't get through: the guard rejects any rephrase with a success word that code didn't produce, or a time or request id that isn't in the facts.
+5. **Templates as the source of truth, LLM only rephrases good news.** Refusals, pending requests and mixed turns always use the template, so they can't be reworded into a confirmation. Successful and info-only turns may be rephrased; the guard then rejects any rephrase with a time or request id that isn't in the facts, or a success claim code didn't produce. Replies are a bit less varied; that's the price.
 6. **App-level tenant scoping instead of Postgres row-level security.** Simpler to read and change, and proven by tests. RLS would be my next step for defence in depth.
 7. **Escalation needs consent, enforced in code.** If the model sets `escalate=true` before the employee was told the rule and said yes, code ignores it and returns the explanation first.
 

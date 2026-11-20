@@ -9,7 +9,7 @@ from typing import Literal
 
 from app.models import ChangeType, Company, Trip, TripOption
 
-ViolationCode = Literal["CUTOFF_PASSED", "NO_SEAT", "NO_SUCH_SLOT", "OUT_OF_WINDOW", "SAME_TRIP"]
+ViolationCode = Literal["CUTOFF_PASSED", "NO_SEAT", "NO_SUCH_SLOT", "OUT_OF_WINDOW", "SAME_TRIP", "DEPARTED"]
 
 
 @dataclass(frozen=True)
@@ -43,6 +43,8 @@ def check_change(
     """
     if current.trip_date not in (today, today + timedelta(days=1)):
         return Violation("OUT_OF_WINDOW", "Only today's and tomorrow's trips can be changed.", False)
+    if now >= current.scheduled_at:
+        return Violation("DEPARTED", "That cab has already left.", False)
 
     if change_type == "reschedule":
         if target is None:

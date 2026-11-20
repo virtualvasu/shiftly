@@ -101,6 +101,8 @@ def _rejected(d: dict, company: Company) -> str:
         return text + (f" Nearest: {_alts(alts)}." if alts else "")
     if code == "SAME_TRIP":
         return f"You're already on the {d['to']} {direction}."
+    if code == "DEPARTED":
+        return f"Your {d['from']} {direction} {d.get('day', 'today')} has already left, so there's nothing to change."
     if code == "OUT_OF_WINDOW":
         return "I can only change trips for today and tomorrow."
     # CUTOFF_PASSED
