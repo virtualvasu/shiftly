@@ -102,7 +102,7 @@ The 6 real-model failures in run 2 (`evaluation.jsonl`, `"pass": false`):
 In every run, no change was ever applied against a rule, no data crossed between companies,
 and every reply ended with a clear next step.
 
-I also found and fixed 13 bugs while building, each with a test that failed first. The most
+I also found and fixed 15 bugs while building, each with a test that failed first. The most
 interesting ones:
 
 - **A double-submit said "no booking" instead of "already done".** I locked the roster row
