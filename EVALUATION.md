@@ -48,7 +48,7 @@ The result files use the required format, one line per case with `id, input, exp
 
 ## Results
 
-**Scripted model: 41/41.** All 199 automated tests pass as well.
+**Scripted model: 41/41.** All 202 automated tests pass as well.
 
 **Real model:** I ran it, read the failures, changed the code, and ran it again.
 

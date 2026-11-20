@@ -21,7 +21,7 @@ More accounts and options are in [Run it](#run-it).
 |---|---|
 | One-command start | `docker compose up` (above) |
 | How to run, design decisions, trade-offs | This README: [Run it](#run-it), [How it works](#how-it-works), [Design decisions](#design-decisions), [Trade-offs](#trade-offs) |
-| Evaluation report | [EVALUATION.md](EVALUATION.md): scenarios, method, results, known failures, limitations, a trade-off |
+| Evaluation report | [EVALUATION.md](EVALUATION.md) (also as [PDF](EVALUATION.pdf)): scenarios, method, results, known failures, limitations, a trade-off |
 | Evaluation set (JSONL: `id, input, expected, actual, pass, notes`) | [evaluation.jsonl](evaluation.jsonl) (real model, 31/37) · [backend/eval/results.jsonl](backend/eval/results.jsonl) (scripted model, 41/41) |
 | 2-minute screen recording | _link_ |
 
@@ -231,7 +231,7 @@ Full report: **[EVALUATION.md](EVALUATION.md)**.
 
 - **Scripted model, 41/41.** The model's tool calls are written into each case, so this proves
   the rules, isolation, approval-after-restart, failure handling and races hold whatever the
-  model says. Plus 199 automated tests.
+  model says. Plus 202 automated tests.
 - **Real model, 26/37 → 31/37** across two runs. Each failure led to a code change: the day is
   picked in code, and the model's choices are checked against the employee's words.
 - **Latency:** p95 **1.51 s**, max 2 LLM calls per message (targets: 5 s, 4 calls).
@@ -269,7 +269,7 @@ salted scrypt hashes; the token carries the company and role from the database.
 ### Tests and evaluation
 
 ```bash
-docker compose run --rm tests                          # 199 tests, fake LLM, real Postgres
+docker compose run --rm tests                          # 202 tests, fake LLM, real Postgres
 docker compose run --rm tests python -m eval.run       # scripted run -> backend/eval/results.jsonl
 docker compose run --rm tests python -m eval.run --mode real --pause 15   # real model (needs key) -> backend/eval/results.real.jsonl
 docker compose run --rm tests python -m eval.latency --n 40 --pause 15    # p95 latency with the real model
