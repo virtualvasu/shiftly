@@ -137,9 +137,8 @@ def build_llm(settings, injected: LLMClient | None = None) -> LLMClient:
 
     provider = settings.llm_provider
     if provider == "fake":
-        if injected is None:
-            raise ValueError("llm_provider=fake needs an injected LLM")
-        return injected
+        # Tests inject a scripted model; without one, every call fails cleanly.
+        return injected if injected is not None else FakeLLM([])
     if injected is not None:
         return injected
     if provider == "offline" or (provider == "auto" and not settings.groq_api_key):

@@ -159,3 +159,7 @@ async def test_rule_planner_status_and_roster():
 async def test_rule_planner_reply_unavailable():
     with pytest.raises(LLMError):
         await RulePlanner().reply([], timeout_s=1)
+
+
+def test_build_llm_fake_without_script_fails_cleanly():
+    assert isinstance(build_llm(Settings(llm_provider="fake")), FakeLLM)
