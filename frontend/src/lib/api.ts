@@ -57,7 +57,7 @@ async function request<T>(path: string, init: { method?: string; body?: unknown 
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
   } catch {
-    throw new ApiError(0, "Can't reach the cab desk right now. Check your connection and try again.");
+    throw new ApiError(0, "Can't reach Shiftly right now. Check your connection and try again.");
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data.error ?? "Something went wrong. Please try again.");

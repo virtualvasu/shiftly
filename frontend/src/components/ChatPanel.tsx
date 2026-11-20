@@ -95,7 +95,7 @@ export function ChatPanel({ name, onReply }: Props) {
           <div className="flex h-full flex-col items-start justify-end gap-3 pb-2">
             <p className="text-lg font-medium">Hi {name}, what needs to change?</p>
             <p className="max-w-sm text-sm text-muted-foreground">
-              Tell me in your own words. I'll check your company's rules and the free seats, then make the change or tell you why not.
+              Tell Shiftly in your own words. It checks your company's rules and the free seats, then makes the change or tells you why not.
             </p>
             <div className="flex flex-wrap gap-2 pt-1">
               {SUGGESTIONS.map((s) => (

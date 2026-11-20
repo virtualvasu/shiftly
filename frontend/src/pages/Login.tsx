@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { Brand } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -43,8 +44,9 @@ export function Login({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
           onClick={() => navigate("/")}
           className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
         >
-          <ArrowLeft className="size-4" /> cab desk
+          <ArrowLeft className="size-4" /> Back
         </button>
+        <div className="mb-6"><Brand size="lg" /></div>
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Sign in</CardTitle>

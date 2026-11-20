@@ -1,7 +1,9 @@
 import { ArrowDown, ArrowRight, Check, CircleSlash, Clock3, UsersRound } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { Brand } from "@/components/Brand";
 import { Plate } from "@/components/Plate";
+import { ScrollRoad } from "@/components/ScrollRoad";
 import { Button } from "@/components/ui/button";
 import { navigate } from "@/lib/router";
 
@@ -67,7 +69,7 @@ function StoryCard({ step }: { step: number }) {
   return (
     <div aria-hidden="true" className="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
       <div className="flex items-center justify-between border-b pb-3 text-xs text-muted-foreground">
-        <span className="font-mono font-semibold text-foreground">cab desk</span>
+        <Brand />
         <span>Today · 17:30</span>
       </div>
 
@@ -142,27 +144,24 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur">
+      <header className="sticky top-0 z-20 bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <span className="font-mono text-sm font-semibold">cab desk</span>
-          <Button size="sm" onClick={enter}>{signedIn ? "Open cab desk" : "Sign in"}</Button>
+          <Brand />
+          <Button size="sm" onClick={enter}>{signedIn ? "Open Shiftly" : "Sign in"}</Button>
         </div>
+        <ScrollRoad />
       </header>
 
       {/* Hero */}
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-16 md:grid-cols-[1.1fr_1fr] md:pt-24">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">For everyone who rides the office cab</p>
-          <h1 className="mt-3 text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
-            Change your office cab in <span className="whitespace-nowrap rounded-md bg-amber-soft px-1.5">one message.</span>
+          <h1 className="font-display text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
+            Your cab, sorted in{" "}
+            <span className="underline decoration-amber decoration-[6px] underline-offset-[10px]">one message.</span>
           </h1>
-          <p className="mt-5 max-w-lg text-lg text-muted-foreground">
-            Meeting running late? Leaving early? Working from home tomorrow? Tell the cab desk in plain words. It checks your
-            company's rules and the free seats, then books it, finds the nearest cab, or asks your manager.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-10 flex flex-wrap gap-3">
             <Button size="lg" onClick={enter}>
-              {signedIn ? "Open cab desk" : "Sign in"} <ArrowRight />
+              {signedIn ? "Open Shiftly" : "Sign in"} <ArrowRight />
             </Button>
             <Button size="lg" variant="ghost" onClick={() => document.getElementById("how")?.scrollIntoView({ behavior: "smooth" })}>
               See how it works <ArrowDown />
@@ -189,7 +188,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
       {/* How it works: the card on the left follows the step you're reading */}
       <section id="how" className="border-t bg-card/40">
         <div className="mx-auto max-w-6xl px-4 py-20">
-          <h2 className="text-3xl font-semibold tracking-tight">What happens when you send a message</h2>
+          <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">What happens when you send a message</h2>
           <p className="mt-2 max-w-xl text-muted-foreground">Five checks, in about a second.</p>
 
           <div className="mt-12 grid gap-10 md:grid-cols-2 md:gap-16">
@@ -220,7 +219,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
 
       {/* When the answer is no */}
       <section className="mx-auto max-w-6xl px-4 py-20">
-        <h2 className="text-3xl font-semibold tracking-tight">When the answer is no, you still know what to do</h2>
+        <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">When the answer is no, you still know what to do</h2>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {WHEN_NO.map(({ icon: Icon, title, body }) => (
             <div key={title} className="rounded-xl border bg-card p-5">
@@ -234,9 +233,9 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
 
       <section className="border-t">
         <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-4 py-14 sm:flex-row sm:items-center">
-          <p className="text-2xl font-semibold tracking-tight">Your cab, sorted in one message.</p>
+          <p className="font-display text-2xl font-bold tracking-tight">Plans changed? Tell Shiftly.</p>
           <Button size="lg" onClick={enter}>
-            {signedIn ? "Open cab desk" : "Sign in"} <ArrowRight />
+            {signedIn ? "Open Shiftly" : "Sign in"} <ArrowRight />
           </Button>
         </div>
       </section>

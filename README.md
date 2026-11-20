@@ -15,7 +15,7 @@ Stack: Python 3.12, FastAPI, LangGraph, Postgres, JWT · React + shadcn/ui · Gr
 docker compose up
 ```
 
-Open **http://localhost:8000**, scroll to see how it works, and sign in with a demo account
+Open **http://localhost:8000** (the app is called **Shiftly**), scroll to see how it works, and sign in with a demo account
 (password for all of them: `cabdesk-demo`).
 
 - Works **without any API key**: a small offline planner (regex) stands in for the LLM.
