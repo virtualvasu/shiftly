@@ -4,6 +4,7 @@ from datetime import date
 from fastapi import FastAPI, Request
 
 from app.api import auth_routes, dev_routes, me_routes
+from app.agent.llm import build_llm
 from app.api.errors import install_error_handlers
 from app.clock import build_clock
 from app.config import Settings, get_settings
@@ -31,6 +32,7 @@ def create_app(
             await seed(pool, seed_today or app_clock.now().date())
         services = Services(settings=settings, pool=pool, clock=app_clock, faults=FaultInjector())
         services.approvals = DirectApprovals(services)
+        services.llm = build_llm(settings, llm)
         app.state.services = services
         try:
             yield

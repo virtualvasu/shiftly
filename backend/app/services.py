@@ -13,7 +13,7 @@ class Services:
     settings: Settings
     pool: AsyncConnectionPool
     clock: Any = None
-    llm_factory: Any = None
+    llm: Any = None
     checkpointer: Any = None
     chat_graph: Any = None
     approval_graph: Any = None
