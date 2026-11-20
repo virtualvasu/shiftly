@@ -243,3 +243,23 @@ async def test_offline_mode_end_to_end(app_kwargs, settings):
     assert first["reply"] == ACME_CUTOFF
     assert second["reply"].startswith("I've sent this to your transport manager (request SCR-")
     assert second["llm_calls"] == 2
+
+
+async def test_escalation_without_prior_offer_is_not_escalated(app_kwargs):
+    # The model jumps ahead and escalates on the first message; code requires the offer first.
+    fake = FakeLLM([move("19:30", escalate=True)])
+    async with running_app(**kw(app_kwargs, fake)) as (app, c):
+        r = await (await chat_as(c, "A-E02")).say("move my drop to 7:30 pm and send it to my manager")
+        rows = await fetchall(app.state.services.pool, "SELECT id FROM shift_change_requests")
+    assert r["reply"] == ACME_CUTOFF
+    assert rows == []
+
+
+async def test_escalation_for_a_different_change_needs_its_own_offer(app_kwargs):
+    fake = FakeLLM([move("19:30"), move("20:30", escalate=True)])
+    async with running_app(**kw(app_kwargs, fake)) as (app, c):
+        chat = await chat_as(c, "A-E02")
+        await chat.say("move my drop to 7:30 pm")
+        r = await chat.say("yes, but make it 8:30")
+        rows = await fetchall(app.state.services.pool, "SELECT id FROM shift_change_requests")
+    assert r["outcomes"][0]["kind"] == "rejected" and rows == []

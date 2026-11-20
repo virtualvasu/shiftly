@@ -151,8 +151,29 @@ async def validate_node(state: ChatState, runtime: Runtime[TurnDeps]) -> dict:
             if at is None:
                 return {"clarify": templates.clarify_missing("time", args["direction"])}
             c = {**c, "desired_at": at.isoformat()}
+        if c["name"] == "raise_shift_change_request" and args.get("escalate"):
+            if not _escalation_was_offered(state.get("last_outcome"), args, c["desired_at"]):
+                c = {**c, "args": {**args, "escalate": False}}
         calls.append(c)
     return {"calls": calls}
+
+
+def _escalation_was_offered(last: dict | None, args: dict, desired_at: str | None) -> bool:
+    """Escalate only the exact change we offered to escalate in the previous turn.
+
+    The model may set escalate=true too early; the employee must have been told
+    the rule and asked first. Otherwise the request is checked normally, which
+    produces that explanation and offer.
+    """
+    if not last or last.get("kind") != "rejected" or not last["data"].get("escalatable"):
+        return False
+    d = last["data"]
+    same_trip = (d.get("day"), d.get("direction"), d.get("change_type")) == (
+        args["date"], args["direction"], args["change_type"])
+    if args["change_type"] == "cancel":
+        return same_trip
+    wanted = datetime.fromisoformat(desired_at).strftime("%H:%M") if desired_at else None
+    return same_trip and d.get("to") == wanted
 
 
 async def execute_node(state: ChatState, runtime: Runtime[TurnDeps]) -> dict:
