@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
     database_url: str = "postgresql://postgres:postgres@db:5432/shift"
-    jwt_secret: str = "dev-only-change-me"
+    jwt_secret: str = "dev-only-secret-change-me-in-production-0001"
     jwt_ttl_min: int = 480
     dev_auth: bool = True
     groq_api_key: str = ""

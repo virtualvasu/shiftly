@@ -3,6 +3,8 @@ from datetime import date
 
 from fastapi import FastAPI, Request
 
+from app.api import auth_routes, me_routes
+from app.api.errors import install_error_handlers
 from app.clock import build_clock
 from app.config import Settings, get_settings
 from app.db import create_pool, init_schema
@@ -33,6 +35,10 @@ def create_app(
             await pool.close()
 
     app = FastAPI(title="Shift-Change Request Agent", lifespan=lifespan)
+    install_error_handlers(app)
+    if settings.dev_auth:
+        app.include_router(auth_routes.router)
+    app.include_router(me_routes.router)
 
     @app.get("/api/health")
     async def health(request: Request):

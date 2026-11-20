@@ -11,9 +11,12 @@ from app.main import create_app
 
 
 @asynccontextmanager
-async def running_app(**create_app_kwargs) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
-    app = create_app(**create_app_kwargs)
+async def running_app(
+    app: FastAPI | None = None, **create_app_kwargs
+) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
+    app = app or create_app(**create_app_kwargs)
     async with LifespanManager(app) as manager:
-        transport = httpx.ASGITransport(app=manager.app)
+        # Behave like a real server: unhandled errors become 500 responses.
+        transport = httpx.ASGITransport(app=manager.app, raise_app_exceptions=False)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             yield app, client

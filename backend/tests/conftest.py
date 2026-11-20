@@ -40,3 +40,31 @@ async def pool(clean_db):
         yield p
     finally:
         await p.close()
+
+
+TODAY = __import__("datetime").date(2026, 11, 20)
+
+
+@pytest.fixture
+def clock():
+    from datetime import datetime
+
+    from app.clock import IST, FixedClock
+
+    return FixedClock(datetime(2026, 11, 20, 17, 30, tzinfo=IST))
+
+
+@pytest.fixture
+def app_kwargs(settings, clock):
+    """Default kwargs for running_app: seeded for 2026-11-20, clock at 17:30 IST."""
+    return {"settings": settings, "clock": clock, "seed_today": TODAY}
+
+
+async def get_token(client, employee_id: str) -> str:
+    r = await client.post("/api/auth/token", json={"employee_id": employee_id})
+    assert r.status_code == 200, r.text
+    return r.json()["token"]
+
+
+def bearer(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
