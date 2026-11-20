@@ -68,3 +68,34 @@ async def get_token(client, employee_id: str) -> str:
 
 def bearer(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+def ctx_for(employee_id: str):
+    from app.auth import TenantContext
+
+    company = "acme" if employee_id.startswith("A-") else "globex"
+    role = "manager" if "-M" in employee_id else "employee"
+    return TenantContext(company, employee_id, role)
+
+
+def at(hhmm: str, day=None):
+    from datetime import datetime
+
+    from app.clock import IST
+
+    day = day or TODAY
+    h, m = map(int, hhmm.split(":"))
+    return datetime(day.year, day.month, day.day, h, m, tzinfo=IST)
+
+
+@pytest.fixture
+async def seeded(pool):
+    from app.seed import seed
+
+    await seed(pool, TODAY)
+    return pool
+
+
+async def fetchall(pool, sql, *args):
+    async with pool.connection() as conn:
+        return await (await conn.execute(sql, args)).fetchall()

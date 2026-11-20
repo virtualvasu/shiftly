@@ -14,7 +14,13 @@ async def create_pool(url: str) -> AsyncConnectionPool:
         min_size=2,
         max_size=20,
         open=False,
-        kwargs={"autocommit": True, "row_factory": dict_row, "prepare_threshold": 0},
+        kwargs={
+            "autocommit": True,
+            "row_factory": dict_row,
+            "prepare_threshold": 0,
+            # timestamps come back in local (IST) time, which is what employees see
+            "options": "-c timezone=Asia/Kolkata",
+        },
     )
     await pool.open(wait=True)
     return pool
