@@ -67,11 +67,66 @@ All 175 automated tests pass (`docker compose run --rm tests`).
 
 ### Real model (Groq)
 
-Not run yet: needs a `GROQ_API_KEY`. Results will be in `backend/eval/results.real.jsonl` and this section.
+Model `openai/gpt-oss-20b` on Groq's free tier, 37 cases, one turn every 15 s
+(the free tier allows 8,000 tokens per minute; a turn uses ~1,000–1,400). Each run's
+raw results are in `backend/eval/history/`; `python -m eval.summary` prints this table.
+
+| Category | Run 1 | Run 2 |
+|---|---|---|
+| approval | 6/6 | 6/6 |
+| capacity | 4/4 | 4/4 |
+| clarify | 2/5 | 3/5 |
+| cutoff | 1/5 | 4/5 |
+| failure | 1/2 | 2/2 |
+| isolation | 7/7 | 6/7* |
+| safety | 1/2 | 2/2 |
+| tool_selection | 4/6 | 4/6 |
+| **Total** | **26/37** | **31/37** |
+
+\* `iso-manager-cross-company` crashed in run 2 because I ran the unit tests at the
+same time, and they reset the shared test database mid-case. Not a product failure.
+
+**Before run 1.** Groq had retired `llama-3.3-70b-versatile`; every call returned 404
+and the agent replied with its plain "trouble understanding, nothing was changed"
+message. I probed the three tool-calling models still served (gpt-oss-20b,
+gpt-oss-120b, qwen3.8-27b) on the same three messages: qwen produced non-questions as
+clarifications ("7:30 pm"), gpt-oss-20b was correct and fastest. The first full run
+was not paced and 24 turns were refused with HTTP 429; that run is not counted.
+Fixes before run 1: the model must call a tool (`tool_choice=required`), and a
+clarification must be an actual question.
+
+**Run 1 → run 2.** Failures were the model being over-careful or wrong about *which*
+trip: asking "today or tomorrow?" and "8 AM or PM?", calling `check_cab_options`
+instead of booking, cancelling one of two trips for "on leave tomorrow", and once
+changing **tomorrow's** drop for "can I take the 7:30 pm drop instead?" (a valid change
+under the rules, but the wrong trip). Change: `date` became optional and **code**
+picks the next trip of that kind that hasn't left; the prompt got explicit rules and
+six worked examples.
+
+**After run 2.** The model still occasionally set a day or trip the employee never
+wrote ("move my drop to 7 pm" planned for tomorrow; "cancel my drop" planned as a
+pickup). Change: code checks the model's choice against the employee's own words
+(`agent/grounding.py`): an unsaid "tomorrow" is dropped, and a pickup/drop that
+contradicts the one the employee named is corrected. This is covered by scripted
+tests and was not re-measured on the real model. One case's wording check was
+loosened: for "change my drop" the model asked "what time would you like to leave?"
+itself, which is right, while the case expected the code's fallback wording.
+
+What never failed in any run: a change applied against a rule, data from another
+company, or a reply without a plain next step.
 
 ### Latency
 
-Not measured yet: needs a `GROQ_API_KEY`. `python -m eval.latency --n 40` writes `backend/eval/latency.json`.
+`python -m eval.latency --n 40 --pause 15` (real model, real Postgres, in-process API),
+written to `backend/eval/latency.json`:
+
+| Answered | p50 | **p95** | max | LLM calls per message |
+|---|---|---|---|---|
+| 35 of 40 | 1.07 s | **1.51 s** | 2.90 s | max 2, mean 1.54 |
+
+5 of the 40 messages were refused by the free-tier rate limit. Those come back in
+~0.2 s with the fallback message, so they are excluded from the percentiles and
+reported separately; counting them would make the p95 look better than it is.
 
 ## Failures found while building (and fixed)
 

@@ -32,15 +32,68 @@ Open **http://localhost:8000** and pick a person to sign in as.
 ### Tests and evaluation
 
 ```bash
-docker compose run --rm tests                          # 175 tests, fake LLM, real Postgres
+docker compose run --rm tests                          # 186 tests, fake LLM, real Postgres
 docker compose run --rm tests python -m eval.run       # evaluation set -> backend/eval/results.jsonl
-docker compose run --rm tests python -m eval.run --mode real   # same cases against Groq (needs key)
-docker compose run --rm tests python -m eval.latency --n 40    # p95 latency with the real model
+docker compose run --rm tests python -m eval.run --mode real --pause 15   # same cases against Groq (needs key)
+docker compose run --rm tests python -m eval.latency --n 40 --pause 15    # p95 latency with the real model
+docker compose run --rm tests python -m eval.summary   # compare the stored real-model runs
 ```
 
 The evaluation set is `backend/eval/cases.jsonl`; results (one line per case with
 `id, input, expected, actual, pass, notes`) are in `backend/eval/results.jsonl`.
 The report is [docs/evaluation.md](docs/evaluation.md). The full design is in [docs/design.md](docs/design.md).
+
+---
+
+## Evaluation and how it improved
+
+Two questions, measured separately:
+
+1. **Is the system correct whatever the model does?** The 41 cases with a scripted
+   model: rules, isolation, approval after restart, failures, races. **41/41**, plus 186 automated tests.
+2. **How good is the real model at driving it?** The same cases against Groq
+   (37 of them; 4 need a deliberately misbehaving model and only run scripted).
+
+Every real-model run is kept in [`backend/eval/history/`](backend/eval/history/) and
+the table below is `python -m eval.summary` over those files:
+
+| Category | Run 1 | Run 2 |
+|---|---|---|
+| approval | 6/6 | 6/6 |
+| capacity | 4/4 | 4/4 |
+| clarify | 2/5 | 3/5 |
+| cutoff | 1/5 | 4/5 |
+| failure | 1/2 | 2/2 |
+| isolation | 7/7 | 6/7* |
+| safety | 1/2 | 2/2 |
+| tool_selection | 4/6 | 4/6 |
+| **Total** | **26/37** | **31/37** |
+
+\* not an isolation failure: I ran the unit tests during that run, which reset the shared test database mid-case.
+
+What each run taught, and what changed:
+
+| Before | What the real model did | What I changed | After |
+|---|---|---|---|
+| First call | Groq had retired Llama 3.3, so every call returned 404. The agent answered "trouble understanding, nothing was changed" as designed. | Compared the three models still served; `openai/gpt-oss-20b` was correct and fastest | — |
+| Unpaced run | 24 turns refused with HTTP 429: the free tier allows 8,000 tokens/min (~4 messages/min) | Runs paced at one turn every 15 s; rate-limited replies never count as model quality | — |
+| Run 1 | Asked "which drop, today or tomorrow?" and "8 AM or PM?", checked options instead of booking, and once **changed tomorrow's drop** for "the 7:30 pm drop instead" | The day is decided **in code** (next trip that hasn't left) unless the employee says it; prompt gets rules and six worked examples | 26 → 31 |
+| Run 2 | Still sometimes set "tomorrow" or "pickup" that the employee never wrote ("cancel my drop" → pickup) | Code grounds the model's choice in the employee's words: an unsaid "tomorrow" is dropped, a contradicted pickup/drop is corrected | covered by scripted tests; not re-run on the real model |
+
+Across all runs the guarantees held: no change was ever applied against a rule,
+and no isolation probe leaked. The remaining failures are the model choosing a
+weaker but safe action (asking a question it didn't need to, or cancelling one trip
+of two); they are listed case by case in [docs/evaluation.md](docs/evaluation.md).
+
+**Latency** (40 real messages, `backend/eval/latency.json`): **p95 1.51 s**, p50 1.07 s,
+max 2.90 s, never more than 2 LLM calls. 5 of the 40 were rate-limited by the free tier
+and are reported separately, not counted as fast answers.
+
+**Bugs found on the way,** each fixed with a test that failed first: 5 while building
+(e.g. a Postgres lock subtlety that made a double-submit look like "no booking"),
+1 by checking out the repo fresh (UI routes shadowing API routes inside Docker),
+and 7 by an independent code review (e.g. "drop at 00:30" looping on a question,
+a departed cab treated as escalatable). Details in [docs/evaluation.md](docs/evaluation.md).
 
 ---
 
