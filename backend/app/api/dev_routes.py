@@ -32,3 +32,14 @@ async def clear_faults(request: Request):
     faults = request.app.state.services.faults
     faults.clear()
     return faults.snapshot()
+
+
+@router.post("/reset")
+async def reset_sample_data(request: Request):
+    """Re-seed today's sample data (demo convenience)."""
+    from app.seed import seed
+
+    services = request.app.state.services
+    services.faults.clear()
+    await seed(services.pool, services.clock.now().date())
+    return {"status": "reset"}

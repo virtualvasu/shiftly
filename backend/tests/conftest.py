@@ -17,6 +17,7 @@ def settings() -> Settings:
         seed_on_start=False,
         llm_provider="fake",
         demo_start="",
+        sweeper_interval_s=0,
     )
 
 

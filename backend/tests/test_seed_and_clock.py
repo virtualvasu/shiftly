@@ -64,3 +64,16 @@ def test_build_clock_demo_start():
     today = datetime.now(IST).date()
     expected = datetime(today.year, today.month, today.day, 17, 30, tzinfo=IST)
     assert abs(clock.now() - expected) < timedelta(seconds=2)
+
+
+async def test_restart_does_not_reseed(settings, clock):
+    from app.testing import running_app
+
+    boot = settings.model_copy(update={"seed_on_start": True})
+    async with running_app(settings=boot, clock=clock) as (app, _):
+        async with app.state.services.pool.connection() as conn:
+            await conn.execute("UPDATE roster SET trip_id = 'acme-r1-1120-d-2130' WHERE employee_id = 'A-E01'")
+    async with running_app(settings=boot, clock=clock) as (app, _):
+        async with app.state.services.pool.connection() as conn:
+            row = await (await conn.execute("SELECT trip_id FROM roster WHERE employee_id = 'A-E01' AND trip_date = '2026-11-20' AND direction='drop'")).fetchone()
+    assert row["trip_id"] == "acme-r1-1120-d-2130"

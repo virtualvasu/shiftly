@@ -164,3 +164,15 @@ async def test_dev_fault_switches(app_kwargs):
         assert r.json() == {"cabs": {"latency_s": 0, "fail": True}}
         assert (await c.delete("/api/dev/faults")).json() == {}
         assert (await c.post("/api/dev/faults", json={"system": "payroll"})).status_code == 422
+
+
+async def test_dev_reset_reseeds(app_kwargs):
+    from app.testing import running_app
+
+    async with running_app(**app_kwargs) as (app, c):
+        async with app.state.services.pool.connection() as conn:
+            await conn.execute("UPDATE roster SET status = 'cancelled' WHERE employee_id = 'A-E01'")
+        r = await c.post("/api/dev/reset")
+        async with app.state.services.pool.connection() as conn:
+            n = (await (await conn.execute("SELECT count(*) AS n FROM roster WHERE employee_id='A-E01' AND status='active'")).fetchone())["n"]
+    assert r.status_code == 200 and n == 3

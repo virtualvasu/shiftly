@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     demo_start: str = "17:30"  # "HH:MM" local time the demo clock starts at; "" = real clock
     seed_on_start: bool = True
     turn_budget_s: float = 4.5
+    sweeper_interval_s: int = 60  # 0 disables the expiry sweeper
     static_dir: str = "/app/static"
 
 
