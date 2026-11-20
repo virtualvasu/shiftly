@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from app import repo
 from app.agent import templates
+from app.agent.grounding import mentioned_direction, mentions_tomorrow
 from app.agent.guard import reply_is_safe
 from app.agent.llm import InvalidModelOutput, LLMBudget, LLMClient, LLMError, ToolCall
 from app.agent.prompt import build_planner_messages, build_reply_messages
@@ -134,11 +135,16 @@ async def validate_node(state: ChatState, runtime: Runtime[TurnDeps]) -> dict:
     deps = runtime.context
     s = deps.services
     now = s.clock.now()
+    # What the employee wrote this turn, then their earlier messages (most recent first).
+    said = [state["user_text"]] + [m["content"] for m in reversed(state.get("messages", [])) if m["role"] == "user"][:2]
     calls = []
     for c in state["calls"]:
         if c["name"] == "ask_clarification":
             return {"clarify": c["args"]["question"], "tools_used": ["ask_clarification"]}
         args = c["args"]
+        if "direction" in args:
+            args = _grounded(args, said)
+            c = {**c, "args": args}
         if "direction" in args and args.get("date") is None:
             args = {**args, "date": await _next_trip_day(s, deps.ctx, args["direction"], now)}
             c = {**c, "args": args}
@@ -160,6 +166,16 @@ async def validate_node(state: ChatState, runtime: Runtime[TurnDeps]) -> dict:
                 c = {**c, "args": {**args, "escalate": False}}
         calls.append(c)
     return {"calls": calls}
+
+
+def _grounded(args: dict, said: list[str]) -> dict:
+    """Drop or correct a day/trip the model chose that the employee didn't say."""
+    if args.get("date") == "tomorrow" and not mentions_tomorrow(said):
+        args = {**args, "date": None}
+    named = mentioned_direction(said)
+    if named and args.get("direction") != named:
+        args = {**args, "direction": named}
+    return args
 
 
 async def _next_trip_day(s, ctx, direction: str, now) -> str:

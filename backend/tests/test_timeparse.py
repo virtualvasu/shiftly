@@ -42,3 +42,14 @@ def test_explicit_24h_time_is_never_flipped_to_pm():
     from datetime import timedelta as td
     assert resolve_time("00:30", TOMORROW, at("19:00", TOMORROW), NOW) == at("00:30", TOMORROW + td(days=1))
     assert resolve_time("08:00", TODAY, at("19:00"), NOW) is None  # explicit morning time that has passed: ask
+
+
+def test_grounding_helpers():
+    from app.agent.grounding import mentioned_direction, mentions_tomorrow
+
+    assert mentions_tomorrow(["can I change tmrw's pickup?"]) and mentions_tomorrow(["Tomorrow 8"])
+    assert not mentions_tomorrow(["move my drop to 7 pm"])
+    assert mentioned_direction(["please cancel my drop"]) == "drop"
+    assert mentioned_direction(["change my pick-up time"]) == "pickup"
+    assert mentioned_direction(["swap my pickup and drop"]) is None
+    assert mentioned_direction(["can I go a bit late?"]) is None

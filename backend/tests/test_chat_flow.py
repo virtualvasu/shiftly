@@ -345,3 +345,28 @@ async def test_day_left_out_after_tonights_cab_left_means_tomorrow(app_kwargs, c
     async with running_app(**kw(app_kwargs, fake)) as (_, c):
         r = await (await chat_as(c, "G-E01")).say("cancel my drop")
     assert r["reply"].startswith("Done. Your 19:00 drop tomorrow is cancelled.")
+
+
+async def test_model_day_not_said_by_employee_is_ignored(app_kwargs):
+    # Real-model finding: "move my drop to 7 pm" was planned for tomorrow. The employee
+    # never said tomorrow, so code falls back to the next trip that hasn't left (today).
+    fake = FakeLLM([move("19:00", day="tomorrow")])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "A-E01")).say("move my drop to 7 pm")
+    assert r["outcomes"][0]["data"]["day"] == "today"
+    assert r["outcomes"][0]["data"]["reason_code"] == "CUTOFF_PASSED"
+
+
+async def test_model_day_said_by_employee_is_kept(app_kwargs):
+    fake = FakeLLM([move("20:00", day="tomorrow")])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "A-E01")).say("tomorrow I need the 8 pm drop")
+    assert r["outcomes"][0]["data"]["day"] == "tomorrow"
+
+
+async def test_model_direction_contradicting_employee_is_corrected(app_kwargs):
+    # Real-model finding: "cancel my drop" was planned as a pickup cancel.
+    fake = FakeLLM([plan(call("raise_shift_change_request", date="today", direction="pickup", change_type="cancel"))])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "G-E02")).say("working from home today, please cancel my drop")
+    assert r["reply"].startswith("Done. Your 19:00 drop today is cancelled.")
