@@ -77,3 +77,25 @@ async def test_restart_does_not_reseed(settings, clock):
         async with app.state.services.pool.connection() as conn:
             row = await (await conn.execute("SELECT trip_id FROM roster WHERE employee_id = 'A-E01' AND trip_date = '2026-11-20' AND direction='drop'")).fetchone()
     assert row["trip_id"] == "acme-r1-1120-d-2130"
+
+
+def test_demo_clock_restart_goes_back_to_start_time(monkeypatch):
+    import app.clock as clock_mod
+
+    ticks = iter([0.0, 7200.0, 7200.0, 7200.0])  # created, two hours later, restarted, read
+    monkeypatch.setattr(clock_mod.time, "monotonic", lambda: next(ticks))
+    c = clock_mod.ShiftedClock(datetime(2026, 11, 20, 17, 30, tzinfo=IST))
+    assert c.now().strftime("%H:%M") == "19:30"
+    c.restart()
+    assert c.now().strftime("%H:%M") == "17:30"
+
+
+async def test_dev_reset_rewinds_demo_clock(settings):
+    import app.clock as clock_mod
+    from app.testing import running_app
+
+    clock = clock_mod.ShiftedClock(datetime(2026, 11, 20, 17, 30, tzinfo=IST))
+    clock._t0 -= 7200  # pretend the app has been up two hours
+    async with running_app(settings=settings, clock=clock, seed_today=TODAY) as (_, c):
+        assert (await c.post("/api/dev/reset")).status_code == 200
+    assert clock.now().strftime("%H:%M") == "17:30"

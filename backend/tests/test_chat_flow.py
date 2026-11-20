@@ -79,7 +79,7 @@ async def test_unusable_time_is_code_clarified(app_kwargs):
     fake = FakeLLM([move("17:00")])  # already past at 17:30
     async with running_app(**kw(app_kwargs, fake)) as (_, c):
         r = await (await chat_as(c, "G-E01")).say("make it 5")
-    assert r["reply"] == "What time would you like your drop instead?"
+    assert r["reply"] == "17:00 has already passed. What later time would you like for your drop?"
 
 
 async def test_context_carried_across_turns(app_kwargs):

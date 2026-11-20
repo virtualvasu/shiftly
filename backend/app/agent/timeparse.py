@@ -35,3 +35,13 @@ def resolve_time(hhmm: str, trip_date: date, current_at: datetime | None, now: d
         candidates.append(same_day + timedelta(hours=12))
     candidates.append(same_day + timedelta(days=1))
     return next((c for c in candidates if plausible(c)), None)
+
+
+def passed_time(hhmm: str, trip_date: date, now: datetime) -> str | None:
+    """The requested time as "HH:MM" if every same-day reading of it is already behind us."""
+    m = _HHMM.fullmatch(hhmm.strip())
+    if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2))
+    latest = datetime.combine(trip_date, time(h + 12 if 1 <= h < 12 and not hhmm.strip().startswith("0") else h, mi), tzinfo=IST)
+    return latest.strftime("%H:%M") if latest <= now else None

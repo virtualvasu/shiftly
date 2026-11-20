@@ -43,6 +43,10 @@ class ShiftedClock:
     def now(self) -> datetime:
         return self._start + timedelta(seconds=time.monotonic() - self._t0)
 
+    def restart(self) -> None:
+        """Back to the start time, e.g. when the demo data is reset."""
+        self._t0 = time.monotonic()
+
 
 def build_clock(settings) -> Clock:
     if not settings.demo_start:

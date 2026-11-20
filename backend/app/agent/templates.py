@@ -46,6 +46,10 @@ def clarify_missing(field: str, direction: str | None) -> str:
     return f"What time would you like your {direction} instead?"
 
 
+def clarify_time_passed(hhmm: str, direction: str) -> str:
+    return f"{hhmm} has already passed. What later time would you like for your {direction}?"
+
+
 def render(o: ToolOutcome, company: Company) -> str:
     d = o.data
     direction = d.get("direction")

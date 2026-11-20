@@ -36,10 +36,12 @@ async def clear_faults(request: Request):
 
 @router.post("/reset")
 async def reset_sample_data(request: Request):
-    """Re-seed today's sample data (demo convenience)."""
+    """Re-seed today's sample data and rewind the demo clock (demo convenience)."""
     from app.seed import seed
 
     services = request.app.state.services
     services.faults.clear()
+    if hasattr(services.clock, "restart"):
+        services.clock.restart()
     await seed(services.pool, services.clock.now().date())
     return {"status": "reset"}

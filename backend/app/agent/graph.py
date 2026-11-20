@@ -24,7 +24,7 @@ from app.agent.guard import reply_is_safe
 from app.agent.llm import InvalidModelOutput, LLMBudget, LLMClient, LLMError, ToolCall
 from app.agent.prompt import build_planner_messages, build_reply_messages
 from app.agent.rule_planner import RulePlanner
-from app.agent.timeparse import resolve_time
+from app.agent.timeparse import passed_time, resolve_time
 from app.api.errors import SERVER_ERROR
 from app.agent.tools import TOOL_SPECS, ToolDeps, ToolOutcome, day_of, run_tool, tool_schemas
 from app.auth import TenantContext
@@ -167,6 +167,9 @@ async def validate_node(state: ChatState, runtime: Runtime[TurnDeps]) -> dict:
                 entry = await repo.get_roster_entry(conn, deps.ctx, trip_date, args["direction"])
             at = resolve_time(args["desired_time"], trip_date, entry.trip.scheduled_at if entry else None, now)
             if at is None:
+                gone = passed_time(args["desired_time"], trip_date, now)
+                if gone:
+                    return {"clarify": templates.clarify_time_passed(gone, args["direction"])}
                 return {"clarify": templates.clarify_missing("time", args["direction"])}
             c = {**c, "desired_at": at.isoformat()}
         if c["name"] == "raise_shift_change_request" and args.get("escalate"):
