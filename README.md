@@ -23,7 +23,7 @@ More accounts and options are in [Run it](#run-it).
 | How to run, design decisions, trade-offs | This README: [Run it](#run-it), [How it works](#how-it-works), [Design decisions](#design-decisions), [Trade-offs](#trade-offs) |
 | Evaluation report | [EVALUATION.md](EVALUATION.md) (also as [PDF](EVALUATION.pdf)): scenarios, method, results, known failures, limitations, a trade-off |
 | Evaluation set (JSONL: `id, input, expected, actual, pass, notes`) | [evaluation.jsonl](evaluation.jsonl) (real model, 31/37) · [backend/eval/results.jsonl](backend/eval/results.jsonl) (scripted model, 41/41) |
-| 2-minute screen recording | _link_ |
+| 2-minute screen recording | [shiftly-demo.mp4 on Google Drive](https://drive.google.com/file/d/1sf176dA2_rBKjdjL_tYqAMGyITXHuk0Y/view) |
 
 ---
 
