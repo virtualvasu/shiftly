@@ -46,7 +46,7 @@ class RulePlanner:
         day = "tomorrow" if "tomorrow" in lower else "today"
         direction = "pickup" if re.search(r"\b(pickup|pick up|pick-up|morning)\b", lower) else None
 
-        if _YES.match(text):
+        if _YES.match(text) and not _TIME.search(text):
             last = _last_outcome(messages)
             data = (last or {}).get("data", {})
             if last and last.get("kind") == "rejected" and data.get("escalatable"):
@@ -79,8 +79,12 @@ class RulePlanner:
                 h += 12
             elif ampm == "am" and h == 12:
                 h = 0
+            # "ok, 8:30 then" answers the last turn: same trip unless they name another one.
+            prev = (_last_outcome(messages) or {}).get("data", {})
+            if "tomorrow" not in lower and prev.get("day"):
+                day = prev["day"]
             return PlanResponse([ToolCall("raise_shift_change_request", {
-                "date": day, "direction": direction or "drop", "change_type": "reschedule",
+                "date": day, "direction": direction or prev.get("direction") or "drop", "change_type": "reschedule",
                 "desired_time": f"{h}:{mi:02d}" if not ampm else f"{h:02d}:{mi:02d}",
             })])
         if _ROSTER.search(text):

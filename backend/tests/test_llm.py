@@ -174,3 +174,11 @@ async def test_rule_planner_book_that_back():
     last = {"kind": "applied", "data": {"day": "tomorrow", "direction": "pickup", "change_type": "cancel"}}
     assert await _plan("can u book that back?", last) == [ToolCall("raise_shift_change_request", {
         "date": "tomorrow", "direction": "pickup", "change_type": "restore"})]
+
+
+async def test_rule_planner_ok_with_a_time_picks_that_time():
+    last = {"kind": "rejected", "data": {"day": "today", "direction": "drop", "to": "20:00",
+                                         "reason_code": "NO_SEAT", "escalatable": False,
+                                         "change_type": "reschedule"}}
+    assert await _plan("ok, 8:30 then", last) == [ToolCall("raise_shift_change_request", {
+        "date": "today", "direction": "drop", "change_type": "reschedule", "desired_time": "8:30"})]
