@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS employees (
 );
 
 -- One cab run. Occupancy is the count of active roster rows on it.
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE employees ADD COLUMN IF NOT EXISTS password_hash text;
+CREATE UNIQUE INDEX IF NOT EXISTS employees_email ON employees (lower(email));
+
 CREATE TABLE IF NOT EXISTS trips (
     id                text PRIMARY KEY,
     company_id        text NOT NULL REFERENCES companies(id),

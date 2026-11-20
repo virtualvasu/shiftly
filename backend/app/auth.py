@@ -1,5 +1,8 @@
 """JWT identity. Company, employee and role come only from a verified token."""
 
+import hashlib
+import hmac
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
@@ -24,6 +27,26 @@ class TenantContext:
 
 class AuthError(Exception):
     pass
+
+
+_SCRYPT = {"n": 2**14, "r": 8, "p": 1, "dklen": 32}
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode(), salt=salt, **_SCRYPT)
+    return f"scrypt${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str | None) -> bool:
+    try:
+        scheme, salt_hex, digest_hex = (stored or "").split("$")
+    except ValueError:
+        return False
+    if scheme != "scrypt":
+        return False
+    digest = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt_hex), **_SCRYPT)
+    return hmac.compare_digest(digest.hex(), digest_hex)
 
 
 def issue_token(ctx: TenantContext, settings: Settings, now: datetime) -> str:

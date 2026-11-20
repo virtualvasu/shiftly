@@ -3,6 +3,7 @@ import { LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Me } from "@/lib/api";
+import { navigate } from "@/lib/router";
 import { DevFaults } from "./DevFaults";
 
 type Props = { me: Me; onSignOut: () => void; onReset?: () => void };
@@ -11,7 +12,9 @@ export function AppHeader({ me, onSignOut, onReset }: Props) {
   return (
     <header className="border-b bg-card">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
-        <span className="font-mono text-sm font-semibold tracking-tight">cab desk</span>
+        <button onClick={() => navigate("/")} className="font-mono text-sm font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-ring">
+          cab desk
+        </button>
         <span className="text-sm text-muted-foreground">·</span>
         <span className="truncate text-sm text-muted-foreground">{me.company_name}</span>
         <div className="ml-auto flex items-center gap-1">

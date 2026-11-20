@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from app.agent.graph import build_chat_graph
-from app.api import auth_routes, chat_routes, dev_routes, manager_routes, me_routes
+from app.api import auth_routes, chat_routes, dev_routes, login_routes, manager_routes, me_routes
 from app.approval.graph import GraphApprovals, build_approval_graph
 from app.approval.sweeper import run_sweeper
 from app.agent.llm import build_llm
@@ -72,6 +72,7 @@ def create_app(
     if settings.dev_auth:
         app.include_router(auth_routes.router)
         app.include_router(dev_routes.router)
+    app.include_router(login_routes.router)
     app.include_router(me_routes.router)
     app.include_router(chat_routes.router)
     app.include_router(manager_routes.router)

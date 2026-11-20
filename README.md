@@ -15,24 +15,29 @@ Stack: Python 3.12, FastAPI, LangGraph, Postgres, JWT · React + shadcn/ui · Gr
 docker compose up
 ```
 
-Open **http://localhost:8000** and pick a person to sign in as.
+Open **http://localhost:8000**, scroll to see how it works, and sign in with a demo account
+(password for all of them: `cabdesk-demo`).
 
 - Works **without any API key**: a small offline planner (regex) stands in for the LLM.
 - For the real agent, copy `.env.example` to `.env` and set `GROQ_API_KEY` (free at console.groq.com), then `docker compose up` again.
 - Port 8000 busy? `APP_PORT=8010 docker compose up`.
 - The demo clock starts at **17:30 India time** whatever the wall clock says (`DEMO_START` in `.env`), so the evening scenarios always work. "Simulate failures → Reset sample data" in the app re-seeds today's data.
 
-| Person | Company | Try |
+| Email | Who | Try |
 |---|---|---|
-| Arjun `G-E01` | Globex (1 h cut-off) | "move my drop to 7:30 pm" → applied |
-| Rohan `A-E02` | Acme (2 h cut-off) | same message → rule explained → "yes" → sent to manager |
-| Kavita `A-M01` | Acme manager | approve / reject Rohan's request |
-| Asha `A-E01` | Acme | "move my drop to 8 pm" → cab full, nearest free cabs offered |
+| `arjun@globex.test` | Globex employee (1 h cut-off) | "move my drop to 7:30 pm" → applied |
+| `rohan@acme.test` | Acme employee (2 h cut-off) | same message → rule explained → "yes" → sent to manager |
+| `kavita@acme.test` | Acme transport manager | approve / reject Rohan's request |
+| `asha@acme.test` | Acme employee | "move my drop to 8 pm" → cab full, nearest free cabs offered |
+| `farah@globex.test` | Globex transport manager | sees only Globex requests |
+
+Also `meera@acme.test`, `sneha@globex.test`, `vikram@globex.test`. Passwords are stored as
+salted scrypt hashes; the token carries the company and role from the database.
 
 ### Tests and evaluation
 
 ```bash
-docker compose run --rm tests                          # 186 tests, fake LLM, real Postgres
+docker compose run --rm tests                          # 199 tests, fake LLM, real Postgres
 docker compose run --rm tests python -m eval.run       # evaluation set -> backend/eval/results.jsonl
 docker compose run --rm tests python -m eval.run --mode real --pause 15   # same cases against Groq (needs key)
 docker compose run --rm tests python -m eval.latency --n 40 --pause 15    # p95 latency with the real model
@@ -50,7 +55,7 @@ The report is [docs/evaluation.md](docs/evaluation.md). The full design is in [d
 Two questions, measured separately:
 
 1. **Is the system correct whatever the model does?** The 41 cases with a scripted
-   model: rules, isolation, approval after restart, failures, races. **41/41**, plus 186 automated tests.
+   model: rules, isolation, approval after restart, failures, races. **41/41**, plus 199 automated tests.
 2. **How good is the real model at driving it?** The same cases against Groq
    (37 of them; 4 need a deliberately misbehaving model and only run scripted).
 

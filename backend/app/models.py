@@ -37,6 +37,8 @@ class Employee:
     role: str
     route_id: str | None
     is_demo: bool
+    email: str | None = None
+    password_hash: str | None = None
 
 
 @dataclass(frozen=True)

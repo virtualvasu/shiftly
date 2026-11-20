@@ -1,11 +1,6 @@
 import { getSession } from "./session";
 
 export type Role = "employee" | "manager";
-export type DemoGroup = {
-  company_id: string;
-  company_name: string;
-  people: { employee_id: string; name: string; role: Role }[];
-};
 export type Me = { employee_id: string; name: string; role: Role; company_id: string; company_name: string };
 export type Trip = {
   trip_date: string;
@@ -70,9 +65,8 @@ async function request<T>(path: string, init: { method?: string; body?: unknown 
 }
 
 export const api = {
-  demoUsers: () => request<DemoGroup[]>("/auth/demo-users"),
-  signIn: (employee_id: string) =>
-    request<{ token: string }>("/auth/token", { method: "POST", body: { employee_id } }),
+  login: (email: string, password: string) =>
+    request<{ token: string }>("/auth/login", { method: "POST", body: { email, password } }),
   me: () => request<Me>("/me"),
   myRoster: () => request<Trip[]>("/me/roster"),
   sendChat: (conversation_id: string | null, message: string) =>

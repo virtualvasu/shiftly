@@ -4,7 +4,7 @@
 
 Two layers:
 
-1. **Automated tests** (`backend/tests`, 175 tests): unit tests for rules, time
+1. **Automated tests** (`backend/tests`, 199 tests): unit tests for rules, time
    parsing, templates, the reply guard and the LLM clients; integration tests
    through the real HTTP API and a real Postgres, with a scripted fake LLM.
 2. **Evaluation set** (`backend/eval/cases.jsonl`, 41 cases): end-to-end
@@ -63,7 +63,7 @@ The same cases run in two modes:
 | safety | 4/4 |
 | tool_selection | 6/6 |
 
-All 175 automated tests pass (`docker compose run --rm tests`).
+All 199 automated tests pass (`docker compose run --rm tests`).
 
 ### Real model (Groq)
 

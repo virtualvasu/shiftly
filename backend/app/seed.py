@@ -7,7 +7,12 @@ from datetime import date, datetime, time, timedelta
 
 from psycopg_pool import AsyncConnectionPool
 
+from app.auth import hash_password
 from app.clock import IST
+
+# Password for every demo account (listed in the README). Not a real credential.
+DEMO_PASSWORD = "cabdesk-demo"
+EMAIL_DOMAIN = {"acme": "acme.test", "globex": "globex.test"}
 
 COMPANIES = [
     # id, name, cutoff pickup, cutoff drop, max seats per cab, escalation allowed
@@ -84,11 +89,18 @@ async def seed(pool: AsyncConnectionPool, today: date) -> None:
             )
             await cur.executemany("INSERT INTO routes VALUES (%s, %s, %s)", ROUTES)
 
-            people = [(*p, True) for p in DEMO_PEOPLE] + [
-                (fid, route_company[route], f"Rider {fid}", "employee", route, False)
+            demo_hash = hash_password(DEMO_PASSWORD)
+            people = [
+                (*p, True, f"{p[2].lower()}@{EMAIL_DOMAIN[p[1]]}", demo_hash) for p in DEMO_PEOPLE
+            ] + [
+                (fid, route_company[route], f"Rider {fid}", "employee", route, False, None, None)
                 for fid, route, _ in FILLERS
             ]
-            await cur.executemany("INSERT INTO employees VALUES (%s, %s, %s, %s, %s, %s)", people)
+            await cur.executemany(
+                "INSERT INTO employees (id, company_id, name, role, route_id, is_demo, email, password_hash) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                people,
+            )
 
             trips, n = [], 0
             for route, company, _ in ROUTES:
