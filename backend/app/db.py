@@ -29,4 +29,4 @@ async def reset_schema(pool: AsyncConnectionPool) -> None:
 
 async def init_schema(pool: AsyncConnectionPool) -> None:
     async with pool.connection() as conn:
-        await conn.execute(SCHEMA_FILE.read_text())
+        await conn.execute(SCHEMA_FILE.read_text(), prepare=False)

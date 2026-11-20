@@ -28,3 +28,15 @@ async def clean_db():
     finally:
         await pool.close()
     yield
+
+
+@pytest.fixture
+async def pool(clean_db):
+    from app.db import init_schema
+
+    p = await create_pool(TEST_DATABASE_URL)
+    await init_schema(p)
+    try:
+        yield p
+    finally:
+        await p.close()

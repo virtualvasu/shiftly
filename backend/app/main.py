@@ -3,8 +3,10 @@ from datetime import date
 
 from fastapi import FastAPI, Request
 
+from app.clock import build_clock
 from app.config import Settings, get_settings
 from app.db import create_pool, init_schema
+from app.seed import seed
 from app.services import Services
 
 
@@ -21,7 +23,10 @@ def create_app(
     async def lifespan(app: FastAPI):
         pool = await create_pool(settings.database_url)
         await init_schema(pool)
-        app.state.services = Services(settings=settings, pool=pool, clock=clock)
+        app_clock = clock or build_clock(settings)
+        if settings.seed_on_start or seed_today:
+            await seed(pool, seed_today or app_clock.now().date())
+        app.state.services = Services(settings=settings, pool=pool, clock=app_clock)
         try:
             yield
         finally:
