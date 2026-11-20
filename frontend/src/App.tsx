@@ -18,7 +18,7 @@ export default function App() {
       {!session && <SignIn onSignedIn={setSession} />}
       {session?.me.role === "employee" && <EmployeeView key={session.me.employee_id} session={session} onSignOut={signOut} />}
       {session?.me.role === "manager" && <ManagerView key={session.me.employee_id} session={session} onSignOut={signOut} />}
-      <Toaster position="bottom-center" />
+      <Toaster position="bottom-center" theme="light" />
     </>
   );
 }
