@@ -58,7 +58,7 @@ class WithdrawArgs(_Args):
 
 
 class AskClarificationArgs(_Args):
-    question: str = Field(min_length=3, max_length=300)
+    question: str = Field(min_length=8, max_length=300, pattern=r"\?\s*$", description="A full question ending with '?'")
     missing: list[str] = Field(default_factory=list)
 
 

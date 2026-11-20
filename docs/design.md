@@ -244,7 +244,7 @@ message" (Postgres advisory try-lock on the conversation id), so a
 double-clicked send cannot run two turns on one thread.
 
 **Latency budget** (per message, 4.5 s soft): planner timeout 2.5 s, tools
-1.5 s each, responder 1.5 s or skipped. Groq llama-3.3-70b typically answers
+1.5 s each, responder 1.5 s or skipped. Groq gpt-oss-20b typically answers
 in 0.3–0.9 s.
 
 ### 5.8 Approval graph (LangGraph, separate thread `approval:{request_id}`)
@@ -351,4 +351,4 @@ Built in a multi-stage Docker image and served by FastAPI as static files.
 ## 8. Left to the builder
 
 Exact prompts, template wording, seed names, UI layout details, Groq model
-choice (default `llama-3.3-70b-versatile`, configurable).
+choice (default `openai/gpt-oss-20b`, configurable; Llama 3.3 was retired by Groq).

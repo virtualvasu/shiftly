@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     jwt_ttl_min: int = 480
     dev_auth: bool = True
     groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-20b"
     llm_provider: Literal["auto", "groq", "offline", "fake"] = "auto"
     demo_start: str = "17:30"  # "HH:MM" local time the demo clock starts at; "" = real clock
     seed_on_start: bool = True

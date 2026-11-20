@@ -176,3 +176,11 @@ async def test_dev_reset_reseeds(app_kwargs):
         async with app.state.services.pool.connection() as conn:
             n = (await (await conn.execute("SELECT count(*) AS n FROM roster WHERE employee_id='A-E01' AND status='active'")).fetchone())["n"]
     assert r.status_code == 200 and n == 3
+
+
+def test_clarification_must_be_a_question():
+    from app.agent.tools import AskClarificationArgs
+
+    with pytest.raises(ValidationError):
+        AskClarificationArgs.model_validate({"question": "7:30 pm"})
+    assert AskClarificationArgs.model_validate({"question": "Which day is that for?"})

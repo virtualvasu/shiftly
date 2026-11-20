@@ -189,3 +189,9 @@ def test_roster_copy():
     assert templates.render(o, ACME) == (
         "Your trips: today drop at 21:00 (cab KA01-0012); tomorrow pickup at 09:00 (cab KA01-0099)."
     )
+
+
+def test_prompt_states_default_day_rule():
+    emp = Employee("A-E01", "acme", "Asha", "employee", "acme-r1", True)
+    system = build_planner_messages(ACME, emp, [], [], None, "x", at("17:30"))[0]["content"]
+    assert "If the day isn't said, use the next one of that trip that hasn't left yet" in system

@@ -54,7 +54,7 @@ async def test_groq_parses_tool_calls():
     out = await _groq(handler).plan([{"role": "user", "content": "hi"}], [{"type": "function"}], timeout_s=2)
     assert out == PlanResponse(tool_calls=[ToolCall("get_roster", {"date": "today"})], text=None)
     assert seen["body"]["model"] == "model-x" and seen["body"]["temperature"] == 0
-    assert seen["body"]["tool_choice"] == "auto"
+    assert seen["body"]["tool_choice"] == "required"
     assert seen["auth"] == "Bearer key"
 
 

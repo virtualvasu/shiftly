@@ -79,7 +79,7 @@ class GroqClient:
             raise LLMError("unexpected response shape") from e
 
     async def plan(self, messages: list[dict], tools: list[dict], *, timeout_s: float) -> PlanResponse:
-        msg = await self._complete({"messages": messages, "tools": tools, "tool_choice": "auto"}, timeout_s)
+        msg = await self._complete({"messages": messages, "tools": tools, "tool_choice": "required"}, timeout_s)
         calls = []
         for tc in msg.get("tool_calls") or []:
             fn = tc.get("function") or {}

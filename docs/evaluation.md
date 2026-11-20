@@ -16,7 +16,7 @@ The same cases run in two modes:
 - **fake**: the planner's tool calls are scripted per case. This proves that
   everything *around* the model is correct (rules, isolation, approval, restart,
   failures, guard, call budget) deterministically, without network or quota.
-- **real**: the cases go to Groq (`llama-3.3-70b-versatile`). This measures what
+- **real**: the cases go to Groq (`openai/gpt-oss-20b`). This measures what
   the fake mode cannot: whether the model picks the right tool, asks instead of
   guessing, and keeps context. Four fake-only cases are skipped here because they
   need the model to misbehave on purpose (rate limit, malformed output, false
