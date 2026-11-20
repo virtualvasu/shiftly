@@ -330,7 +330,7 @@ Built in a multi-stage Docker image and served by FastAPI as static files.
   writes `eval/results.jsonl` with exactly `id, input, expected, actual, pass,
   notes`. Fake mode is deterministic (plumbing + rules). Real mode measures
   actual tool selection and clarification behaviour of the model and records
-  latency; its committed results and failures go into `docs/evaluation.md`.
+  latency; its committed results and failures go into `EVALUATION.md`.
 - `python -m eval.latency` → p95 over ~40 real-LLM messages.
 
 ## 7. Trade-offs (to be expanded in README)

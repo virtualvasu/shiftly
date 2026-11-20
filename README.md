@@ -1,11 +1,29 @@
-# Shift-Change Request Agent
+# Shiftly: shift-change request agent
 
-A chat agent that handles office-cab shift changes end to end: it understands the
-request, reads only the caller's roster, applies that company's rules in code,
-then makes the change, explains why not and offers the next cab, or escalates to the
-transport manager and resumes when the decision arrives, even after a restart.
+A chat agent for office-cab shift changes. An employee writes "move my drop to 7:30 pm"
+or "I'm on leave tomorrow". The agent reads only that employee's roster and applies their
+company's rules in code. Then it either makes the change, explains why not and offers the
+nearest cab that works, or sends it to the transport manager and comes back with the
+decision, even if the service restarts in between.
 
-Stack: Python 3.12, FastAPI, LangGraph, Postgres, JWT · React + shadcn/ui · Groq (free tier).
+Stack: Python 3.12, FastAPI, LangGraph, Postgres, JWT · React + shadcn/ui · Groq (`openai/gpt-oss-20b`).
+
+**Start it with one command:**
+
+```bash
+docker compose up
+```
+
+Then open **http://localhost:8000** and sign in as `arjun@globex.test`, password `cabdesk-demo`.
+More accounts and options are in [Run it](#run-it).
+
+| Submission item | Where |
+|---|---|
+| One-command start | `docker compose up` (above) |
+| How to run, design decisions, trade-offs | This README: [Run it](#run-it), [How it works](#how-it-works), [Design decisions](#design-decisions), [Trade-offs](#trade-offs) |
+| Evaluation report | [EVALUATION.md](EVALUATION.md): scenarios, method, results, known failures, limitations, a trade-off |
+| Evaluation set (JSONL: `id, input, expected, actual, pass, notes`) | [evaluation.jsonl](evaluation.jsonl) (real model, 31/37) · [backend/eval/results.jsonl](backend/eval/results.jsonl) (scripted model, 41/41) |
+| 2-minute screen recording | _link_ |
 
 ---
 
@@ -75,7 +93,7 @@ flowchart TD
 
 - Fixed pipeline, not a free agent loop: **plan (1) + optional retry (1) + optional rephrase (1) = 3 max**. A per-message `LLMBudget` raises on a 5th call; every test turn asserts `llm_calls <= 4`. Typical turn: 1–2 calls (refusals and questions: 1; successful changes: 2).
 - Time budget per message: planner timeout 2.5 s, each tool 1.5 s (reads retried once; a booking that times out is re-checked so the employee is never told "nothing changed" when it did), rephrase 1.5 s and **skipped when less than 1.5 s of the 4.5 s budget is left** (the template is used). A hard 10 s turn timeout returns a plain message instead of hanging.
-- Groq's free tier is fast enough for this pipeline. The measured p95 is in [docs/evaluation.md](docs/evaluation.md).
+- Groq's free tier is fast enough for this pipeline. Measured p95: **1.51 s** ([EVALUATION.md](EVALUATION.md)).
 
 ### Multi-company isolation
 
@@ -175,67 +193,49 @@ transactions on Postgres (run repeatedly while building).
 
 ---
 
-## Evaluation and how it improved
+## Design decisions
 
-Two questions, measured separately:
+1. **The LLM understands and talks; code decides.** The model reads the message and picks a
+   tool. Who is asking, which trip, the cut-off, seats, the booking and the wording of a refusal
+   are all plain Python.
+2. **A fixed LangGraph pipeline, not a free agent loop.** Plan → validate → execute → respond.
+   That gives at most 3 LLM calls per message (the limit is 4) and predictable latency.
+3. **Identity only from the JWT.** A `TenantContext` built from the token is passed to every
+   repository call, and every tenant query filters by `company_id`. Request bodies and tool
+   arguments can't carry `company_id` or `employee_id`.
+4. **Code checks the model against the employee's words.** If the employee didn't name a day,
+   code picks their next trip that hasn't left. A "tomorrow" or "pickup" the employee never said
+   is corrected. A time that has already passed gets a plain question back.
+5. **Escalation needs a yes, enforced in code.** If the model escalates before the employee was
+   told the rule and agreed, code ignores it and explains the rule first.
+6. **Manager approval is its own LangGraph thread.** It pauses at `interrupt()`, its checkpoint
+   is in Postgres, and it resumes with `Command(resume=...)` when the manager decides, the
+   employee withdraws or the request expires. The chat stays usable in the meantime.
+7. **Postgres is the only store.** Domain data, row locks, idempotency (a unique index), the
+   audit log and the LangGraph checkpoints all live there. No Redis.
 
-1. **Is the system correct whatever the model does?** The 41 cases with a scripted
-   model: rules, isolation, approval after restart, failures, races. **41/41**, plus 199 automated tests.
-2. **How good is the real model at driving it?** The same cases against Groq
-   (37 of them; 4 need a deliberately misbehaving model and only run scripted).
+## Trade-offs
 
-Every real-model run is kept in [`backend/eval/history/`](backend/eval/history/) and
-the table below is `python -m eval.summary` over those files:
-
-| Category | Run 1 | Run 2 |
-|---|---|---|
-| approval | 6/6 | 6/6 |
-| capacity | 4/4 | 4/4 |
-| clarify | 2/5 | 3/5 |
-| cutoff | 1/5 | 4/5 |
-| failure | 1/2 | 2/2 |
-| isolation | 7/7 | 6/7* |
-| safety | 1/2 | 2/2 |
-| tool_selection | 4/6 | 4/6 |
-| **Total** | **26/37** | **31/37** |
-
-\* not an isolation failure: I ran the unit tests during that run, which reset the shared test database mid-case.
-
-What each run taught, and what changed:
-
-| Before | What the real model did | What I changed | After |
+| I chose | Over | What I gave up | Why |
 |---|---|---|---|
-| First call | Groq had retired Llama 3.3, so every call returned 404. The agent answered "trouble understanding, nothing was changed" as designed. | Compared the three models still served; `openai/gpt-oss-20b` was correct and fastest | — |
-| Unpaced run | 24 turns refused with HTTP 429: the free tier allows 8,000 tokens/min (~4 messages/min) | Runs paced at one turn every 15 s; rate-limited replies never count as model quality | — |
-| Run 1 | Asked "which drop, today or tomorrow?" and "8 AM or PM?", checked options instead of booking, and once **changed tomorrow's drop** for "the 7:30 pm drop instead" | The day is decided **in code** (next trip that hasn't left) unless the employee says it; prompt gets rules and six worked examples | 26 → 31 |
-| Run 2 | Still sometimes set "tomorrow" or "pickup" that the employee never wrote ("cancel my drop" → pickup) | Code grounds the model's choice in the employee's words: an unsaid "tomorrow" is dropped, a contradicted pickup/drop is corrected | covered by scripted tests; not re-run on the real model |
+| Fixed planner/executor pipeline | Free ReAct loop | The model can't chain arbitrary tool calls | Hard call cap, predictable latency, and facts never come from the model |
+| **No seat hold during approval** | Holding the seat | An approved change can find the cab full | Evening seats are scarce and approvals slow; that case is handled and tested. Details in [EVALUATION.md](EVALUATION.md#a-trade-off-i-dont-hold-the-seat-while-the-manager-decides) |
+| Templates as the source of truth | Free-form LLM replies | Replies are less varied | A confident wrong confirmation is worse than a plain one; the LLM may only reword good news, and a guard checks it |
+| App-level tenant scoping | Postgres row-level security | One layer of defence instead of two | Easier to read and test; RLS would be my next step |
+| Postgres only | Postgres + Redis | No pub/sub; the UI polls for new messages | One thing to run, and it already gives locks and checkpoints |
+| Small free model (`gpt-oss-20b` on Groq) | A larger paid model | It needs more help from code, and the free tier rate-limits | p95 1.5 s; when it's down or limited, a regex planner takes over and the same rules apply |
 
-Across all runs the guarantees held: no change was ever applied against a rule,
-and no isolation probe leaked. The remaining failures are the model choosing a
-weaker but safe action (asking a question it didn't need to, or cancelling one trip
-of two); they are listed case by case in [docs/evaluation.md](docs/evaluation.md).
+## Evaluation
 
-**Latency** (40 real messages, `backend/eval/latency.json`): **p95 1.51 s**, p50 1.07 s,
-max 2.90 s, never more than 2 LLM calls. 5 of the 40 were rate-limited by the free tier
-and are reported separately, not counted as fast answers.
+Full report: **[EVALUATION.md](EVALUATION.md)**.
 
-**Bugs found on the way,** each fixed with a test that failed first: 5 while building
-(e.g. a Postgres lock subtlety that made a double-submit look like "no booking"),
-1 by checking out the repo fresh (UI routes shadowing API routes inside Docker),
-and 7 by an independent code review (e.g. "drop at 00:30" looping on a question,
-a departed cab treated as escalatable). Details in [docs/evaluation.md](docs/evaluation.md).
-
----
-
-## Design decisions and trade-offs
-
-1. **Planner + executor instead of a free ReAct loop.** I lose some flexibility (the model can't chain arbitrary tool calls), and I gain a hard call cap, predictable latency, and facts that never come from the model. For a desk that must not quote the wrong rule, that is the right trade.
-2. **No seat hold while waiting for the manager.** Approvals can take hours and seats are scarce; holding one would block other employees for a request that may be rejected. The cost is that an approved change can find the cab full, so that path is handled and tested explicitly ("filled up in the meantime").
-3. **Postgres only, no Redis.** One store gives row locks, a unique index for idempotency, and the LangGraph checkpointer. Fewer moving parts to run and explain.
-4. **Separate approval thread instead of pausing the chat thread.** An approval can take hours; pausing the chat would block every other message in it. The pause is still a real LangGraph interrupt, and the decision still lands in the same conversation.
-5. **Templates as the source of truth, LLM only rephrases good news.** Refusals, pending requests and mixed turns always use the template, so they can't be reworded into a confirmation. Successful and info-only turns may be rephrased; the guard then rejects any rephrase with a time or request id that isn't in the facts, or a success claim code didn't produce. Replies are a bit less varied; that's the price.
-6. **App-level tenant scoping instead of Postgres row-level security.** Simpler to read and change, and proven by tests. RLS would be my next step for defence in depth.
-7. **Escalation needs consent, enforced in code.** If the model sets `escalate=true` before the employee was told the rule and said yes, code ignores it and returns the explanation first.
+- **Scripted model, 41/41.** The model's tool calls are written into each case, so this proves
+  the rules, isolation, approval-after-restart, failure handling and races hold whatever the
+  model says. Plus 199 automated tests.
+- **Real model, 26/37 → 31/37** across two runs. Each failure led to a code change: the day is
+  picked in code, and the model's choices are checked against the employee's words.
+- **Latency:** p95 **1.51 s**, max 2 LLM calls per message (targets: 5 s, 4 calls).
+- **Never failed in any run:** a change applied against a rule, or data crossing between companies.
 
 ---
 
@@ -245,13 +245,15 @@ a departed cab treated as escalatable). Details in [docs/evaluation.md](docs/eva
 docker compose up
 ```
 
-Open **http://localhost:8000** (the app is called **Shiftly**), scroll to see how it works, and sign in with a demo account
-(password for all of them: `cabdesk-demo`).
+Open **http://localhost:8000**. Scroll the landing page to see how it works, then sign in.
+The password for every demo account is `cabdesk-demo`.
 
-- Works **without any API key**: a small offline planner (regex) stands in for the LLM.
-- For the real agent, copy `.env.example` to `.env` and set `GROQ_API_KEY` (free at console.groq.com), then `docker compose up` again.
+- It works **without an API key**: a small offline planner (regex) stands in for the LLM.
+- For the real agent, copy `.env.example` to `.env`, set `GROQ_API_KEY` (free at console.groq.com), and run `docker compose up` again.
 - Port 8000 busy? `APP_PORT=8010 docker compose up`.
-- The demo clock starts at **17:30 India time** whatever the wall clock says (`DEMO_START` in `.env`), so the evening scenarios always work. "Simulate failures → Reset sample data" in the app re-seeds today's data.
+- The demo clock starts at **17:30 India time** whatever the wall clock says (`DEMO_START` in
+  `.env`), so the evening scenarios always work. "Simulate failures → Reset sample data" in the
+  app re-seeds the data and sets the clock back to 17:30.
 
 | Email | Who | Try |
 |---|---|---|
@@ -268,12 +270,12 @@ salted scrypt hashes; the token carries the company and role from the database.
 
 ```bash
 docker compose run --rm tests                          # 199 tests, fake LLM, real Postgres
-docker compose run --rm tests python -m eval.run       # evaluation set -> backend/eval/results.jsonl
-docker compose run --rm tests python -m eval.run --mode real --pause 15   # same cases against Groq (needs key)
+docker compose run --rm tests python -m eval.run       # scripted run -> backend/eval/results.jsonl
+docker compose run --rm tests python -m eval.run --mode real --pause 15   # real model (needs key) -> backend/eval/results.real.jsonl
 docker compose run --rm tests python -m eval.latency --n 40 --pause 15    # p95 latency with the real model
 docker compose run --rm tests python -m eval.summary   # compare the stored real-model runs
 ```
 
-The evaluation set is `backend/eval/cases.jsonl`; results (one line per case with
-`id, input, expected, actual, pass, notes`) are in `backend/eval/results.jsonl`.
-The report is [docs/evaluation.md](docs/evaluation.md). The full design is in [docs/design.md](docs/design.md).
+The cases are defined in `backend/eval/cases.jsonl`. `evaluation.jsonl` is a copy of the second
+real-model run (`backend/eval/history/2-real-gpt-oss-20b-day-in-code.jsonl`). The full design
+is in [docs/design.md](docs/design.md).
