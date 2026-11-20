@@ -36,13 +36,13 @@ class GetRosterArgs(_Args):
 
 
 class CheckCabOptionsArgs(_Args):
-    date: DayKey
+    date: DayKey | None = Field(None, description="Omit unless the employee said today or tomorrow; the system then uses the next trip that has not left")
     direction: Direction = Field(description="pickup = to office, drop = home from office")
     desired_time: str = Field(pattern=TIME_PATTERN, description="24h HH:MM")
 
 
 class RaiseRequestArgs(_Args):
-    date: DayKey
+    date: DayKey | None = Field(None, description="Omit unless the employee said today or tomorrow; the system then uses the next trip that has not left")
     direction: Direction = Field(description="pickup = to office, drop = home from office")
     change_type: ChangeType = Field(description="reschedule = move to another cab; cancel = not travelling (leave/WFH)")
     desired_time: str | None = Field(None, pattern=TIME_PATTERN, description="24h HH:MM, required for reschedule")

@@ -139,6 +139,9 @@ async def validate_node(state: ChatState, runtime: Runtime[TurnDeps]) -> dict:
         if c["name"] == "ask_clarification":
             return {"clarify": c["args"]["question"], "tools_used": ["ask_clarification"]}
         args = c["args"]
+        if "direction" in args and args.get("date") is None:
+            args = {**args, "date": await _next_trip_day(s, deps.ctx, args["direction"], now)}
+            c = {**c, "args": args}
         needs_time = c["name"] == "check_cab_options" or (
             c["name"] == "raise_shift_change_request" and args["change_type"] == "reschedule"
         )
@@ -157,6 +160,13 @@ async def validate_node(state: ChatState, runtime: Runtime[TurnDeps]) -> dict:
                 c = {**c, "args": {**args, "escalate": False}}
         calls.append(c)
     return {"calls": calls}
+
+
+async def _next_trip_day(s, ctx, direction: str, now) -> str:
+    """The day the employee means when they don't say: the next such trip that hasn't left."""
+    async with s.pool.connection() as conn:
+        today = await repo.get_roster_entry(conn, ctx, now.date(), direction)
+    return "today" if today and today.trip.scheduled_at > now else "tomorrow"
 
 
 def _escalation_was_offered(last: dict | None, args: dict, desired_at: str | None) -> bool:

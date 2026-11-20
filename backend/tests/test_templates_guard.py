@@ -191,7 +191,9 @@ def test_roster_copy():
     )
 
 
-def test_prompt_states_default_day_rule():
+def test_prompt_has_worked_examples():
     emp = Employee("A-E01", "acme", "Asha", "employee", "acme-r1", True)
     system = build_planner_messages(ACME, emp, [], [], None, "x", at("17:30"))[0]["content"]
-    assert "If the day isn't said, use the next one of that trip that hasn't left yet" in system
+    assert "Leave out `date` unless the employee says today or tomorrow" in system
+    assert '"move my drop to 7:30 pm" -> raise_shift_change_request' in system
+    assert "Use check_cab_options only when they ask what cabs are available" in system

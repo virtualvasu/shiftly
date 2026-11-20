@@ -323,3 +323,25 @@ async def test_booking_timeout_after_commit_reports_truth(app_kwargs, monkeypatc
         r = await (await chat_as(c, "A-E01")).say("move my drop to 9:30 pm")
     assert r["outcomes"][0]["kind"] == "applied"
     assert r["reply"].startswith("Done. Your drop today is now at 21:30")
+
+
+def move_no_day(time: str, direction="drop"):
+    return plan(call("raise_shift_change_request", direction=direction, change_type="reschedule", desired_time=time))
+
+
+async def test_day_left_out_means_next_trip_that_has_not_left(app_kwargs):
+    # Real-model finding: the model picked tomorrow's drop for "the 7:30 pm drop instead".
+    # The day is now decided by code when the employee doesn't say it.
+    fake = FakeLLM([move_no_day("19:30")])
+    async with running_app(**kw(app_kwargs, fake)) as (app, c):
+        r = await (await chat_as(c, "A-E01")).say("can I take the 7:30 pm drop instead?")
+        assert await roster_trip(app, "A-E01") == "acme-r1-1120-d-1930"
+    assert r["outcomes"][0]["kind"] == "applied"
+
+
+async def test_day_left_out_after_tonights_cab_left_means_tomorrow(app_kwargs, clock):
+    clock.advance(100)  # 19:10: G-E01's 19:00 drop today has left
+    fake = FakeLLM([plan(call("raise_shift_change_request", direction="drop", change_type="cancel"))])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "G-E01")).say("cancel my drop")
+    assert r["reply"].startswith("Done. Your 19:00 drop tomorrow is cancelled.")
