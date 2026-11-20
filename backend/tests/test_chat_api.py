@@ -79,3 +79,11 @@ async def test_double_click_send_one_turn(app_kwargs):
     busy = r1 if r1.status_code == 409 else r2
     assert busy.json() == {"error": templates.busy()}
     assert fake.plan_calls == 2
+
+
+async def test_message_times_follow_app_clock(app_kwargs):
+    async with running_app(**{**app_kwargs, "llm": FakeLLM([ask()])}) as (_, c):
+        a = await chat_as(c, "A-E01")
+        await a.say("hi")
+        msgs = (await c.get(f"/api/conversations/{a.conversation_id}/messages", headers=bearer(a.token))).json()
+    assert all(m["created_at"].startswith("2026-11-20T17:30") for m in msgs)

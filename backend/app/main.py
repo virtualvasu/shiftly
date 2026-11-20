@@ -3,7 +3,11 @@ import contextlib
 from contextlib import asynccontextmanager
 from datetime import date
 
-from fastapi import FastAPI, Request
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
@@ -80,7 +84,26 @@ def create_app(
             row = await (await conn.execute("SELECT 1 AS ok")).fetchone()
         return {"status": "ok", "db": row["ok"] == 1}
 
+    _serve_spa(app, Path(settings.static_dir))
     return app
+
+
+def _serve_spa(app: FastAPI, static: Path) -> None:
+    """Serve the built web UI; unknown non-API paths get index.html (client-side routing)."""
+    index = static / "index.html"
+    if not index.is_file():
+        return
+    if (static / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def spa(path: str):
+        if path.startswith("api/"):
+            raise HTTPException(status_code=404)
+        candidate = (static / path).resolve()
+        if path and candidate.is_file() and candidate.is_relative_to(static.resolve()):
+            return FileResponse(candidate)
+        return FileResponse(index)
 
 
 app = create_app()

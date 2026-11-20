@@ -1,12 +1,10 @@
-# --- Stage 1: build the web UI (skipped cleanly if there is no frontend yet)
+# --- Stage 1: build the web UI
 FROM node:22-alpine AS web
-WORKDIR /src
-COPY frontend/ ./frontend/
-RUN if [ -f frontend/package.json ]; then \
-      cd frontend && npm ci && npm run build; \
-    else \
-      mkdir -p frontend/dist; \
-    fi
+WORKDIR /src/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=2000 --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
 
 # --- Stage 2: Python runtime serving the API and the built UI
 FROM python:3.12-slim

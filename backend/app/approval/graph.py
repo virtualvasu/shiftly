@@ -112,7 +112,7 @@ async def notify_employee(services, company_id: str, request_id: str, status: st
             "note": req.note,
         }
         text = templates.decision_message(status, data)
-        await repo.append_message(conn, company_id, req.conversation_id, "assistant", text)
+        await repo.append_message(conn, company_id, req.conversation_id, "assistant", text, services.clock.now())
 
     # Add it to the chat graph's memory too, so "ok, then 9?" makes sense next turn.
     # Take the conversation's turn lock so we don't race a turn in progress.

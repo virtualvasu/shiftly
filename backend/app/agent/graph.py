@@ -277,7 +277,7 @@ async def handle_message(services, ctx: TenantContext, conversation_id: str, tex
             raise ConversationBusy()
         try:
             async with services.pool.connection() as conn:
-                await repo.append_message(conn, ctx.company_id, conversation_id, "user", text)
+                await repo.append_message(conn, ctx.company_id, conversation_id, "user", text, services.clock.now())
 
             deps = TurnDeps(services=services, ctx=ctx, llm=services.llm, conversation_id=conversation_id)
             turn_input = {"user_text": text, "calls": [], "clarify": None, "outcomes": [], "reply": "",
@@ -297,7 +297,7 @@ async def handle_message(services, ctx: TenantContext, conversation_id: str, tex
                 result = ChatResult(conversation_id, SERVER_ERROR, [], deps.budget.used, [])
 
             async with services.pool.connection() as conn:
-                await repo.append_message(conn, ctx.company_id, conversation_id, "assistant", result.reply)
+                await repo.append_message(conn, ctx.company_id, conversation_id, "assistant", result.reply, services.clock.now())
             return result
         finally:
             await lock_conn.execute("SELECT pg_advisory_unlock(hashtext(%s))", (conversation_id,))

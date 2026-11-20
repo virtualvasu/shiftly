@@ -285,11 +285,11 @@ async def latest_conversation(conn, ctx: TenantContext) -> str | None:
     return row["id"] if row else None
 
 
-async def append_message(conn, company_id: str, conversation_id: str, role: str, text: str) -> int:
+async def append_message(conn, company_id: str, conversation_id: str, role: str, text: str, created_at) -> int:
     row = await _one(
         conn,
-        "INSERT INTO messages (conversation_id, company_id, role, text) VALUES (%s, %s, %s, %s) RETURNING id",
-        (conversation_id, company_id, role, text),
+        "INSERT INTO messages (conversation_id, company_id, role, text, created_at) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+        (conversation_id, company_id, role, text, created_at),
     )
     return row["id"]
 
