@@ -106,23 +106,49 @@ a departed cab treated as escalatable). Details in [docs/evaluation.md](docs/eva
 
 **The LLM understands and talks. Code decides.**
 
-```
-POST /api/chat  (JWT -> company, employee)
-   │
-   ▼
- plan      LLM call 1: reads the message + history, returns tool calls (or a question)
-   │       invalid output -> one retry with the error (LLM call 2), then "could you rephrase"
- validate  code: schema check, identity args rejected, time resolved, "ask, don't guess",
-   │             escalation only if it was offered and accepted
- execute   code: tenant-scoped tools -> rule engine -> one DB transaction
-   │
- respond   template built from the facts; for successful or info-only turns the LLM
-           may rephrase it (last call), and a guard rejects any rephrase that
-           invents a time, an id or a success. Refusals are never rephrased.
-           -> applied | rejected + next cabs | question | sent to manager (⏸)
+### Architecture
 
-manager decision ──▶ approval workflow (own LangGraph thread, Postgres checkpoint)
-                     interrupt ⏸ -> apply (re-checks seats) -> message in the same chat
+```mermaid
+flowchart TB
+    E["Employee<br/>web chat"] -->|"message + JWT"| API
+    M["Transport manager<br/>web inbox"] -->|"approve / reject + JWT"| API
+
+    subgraph S["FastAPI service"]
+        direction LR
+        API["API + JWT auth<br/>identity from the token only"]
+        CHAT["Chat agent<br/>LangGraph"]
+        APPR["Approval workflow<br/>LangGraph, paused with interrupt"]
+        CODE["Rules + booking<br/>plain Python, one transaction"]
+        SWEEP["Expiry sweeper"]
+        API --> CHAT
+        API -->|"resume"| APPR
+        CHAT -->|"validated tool calls"| CODE
+        CHAT -->|"escalate after a yes"| APPR
+        APPR --> CODE
+        SWEEP -->|"expire"| APPR
+    end
+
+    CHAT -->|"plan, rephrase<br/>at most 4 calls"| LLM["Groq LLM<br/>gpt-oss-20b"]
+    CODE --> DB[("Postgres<br/>rosters, requests, audit log,<br/>LangGraph checkpoints")]
+```
+
+- **API** turns the JWT into a `TenantContext` (company, employee, role). Nothing else can set identity.
+- **Chat agent** is a fixed four-step LangGraph: the LLM plans, code does everything that decides.
+- **Rules + booking** is plain Python: the cut-off and seat rules, and the only code that writes the roster.
+- **Approval workflow** pauses on its own thread until a manager, the employee or the sweeper resumes it; its checkpoint is in Postgres, so it survives a restart.
+- **Postgres** is the only store: domain data, row locks, the audit log and LangGraph checkpoints. No Redis.
+
+### One message, step by step
+
+```mermaid
+flowchart TD
+    A["Employee message"] --> P["1. Plan<br/>LLM picks tools, or asks a question"]
+    P -->|"model down or rate-limited"| RP["Rule planner<br/>regex fallback"]
+    P --> V
+    RP --> V["2. Validate, in code<br/>schema check, no identity arguments,<br/>resolve the time, check day and trip against<br/>the employee's words, escalate only after a yes"]
+    V -->|"time or trip unclear"| Q["Ask a question"]
+    V --> X["3. Execute, in code<br/>tenant-scoped tools, rules, booking"]
+    X --> R["4. Respond<br/>template built from the facts;<br/>the LLM may reword good news only;<br/>a guard rejects invented times, ids or success"]
 ```
 
 ### Where the LLM is used, and where plain code is better
@@ -146,6 +172,14 @@ manager decision ──▶ approval workflow (own LangGraph thread, Postgres che
 
 ### Multi-company isolation
 
+```mermaid
+flowchart LR
+    T["JWT<br/>company, employee, role"] --> C["TenantContext<br/>built only from the token"]
+    C --> R["Repository<br/>every query filters on company_id"]
+    R --> DB[("Postgres")]
+    B["company_id or employee_id<br/>in a request body or in model output"] -.->|"422 / invalid plan"| X["Rejected"]
+```
+
 - `TenantContext(company_id, employee_id, role)` is built only from the verified JWT and passed explicitly to every repository function; every tenant query filters by `company_id`. There is no unscoped query for tenant data.
 - Request bodies are `extra="forbid"`: a body with `company_id` is a 422.
 - Tool argument schemas contain only business fields (day, pickup/drop, time); a model emitting `employee_id`/`company_id` makes the plan invalid.
@@ -166,6 +200,20 @@ already left can't be changed at all. A full cab or a non-existent slot is never
 offers the two nearest cabs that pass every rule.
 
 ### Manager approval and restarts
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: rule broken, employee says yes
+    Pending --> Approved: manager approves, seat still free
+    Pending --> ApprovedNoSeat: manager approves, cab filled meanwhile
+    Pending --> Rejected: manager rejects
+    Pending --> Withdrawn: employee withdraws or changes the trip
+    Pending --> Expired: no decision 15 min before the cab
+    note right of Pending
+        LangGraph interrupt on its own thread,
+        checkpointed in Postgres, survives restarts
+    end note
+```
 
 Each escalation starts its own LangGraph thread (`approval:<request id>`) that
 stops at `interrupt()`; the checkpoint and the request row are both in Postgres.
@@ -199,6 +247,16 @@ Also checked manually with `docker compose restart api` between escalation and a
 The "Simulate failures" panel in the UI switches these on for the demo.
 
 ### Bonus: last seat and double-submit
+
+```mermaid
+flowchart LR
+    A["Lock the employee's<br/>roster row"] --> B["Lock both cabs<br/>in id order"]
+    B --> C["Count seats again<br/>under the lock"]
+    C --> D{"Rules pass?"}
+    D -->|"yes"| E["Update roster, request, audit<br/>then commit"]
+    D -->|"cut-off passed"| F["Explain the rule,<br/>offer the manager"]
+    D -->|"cab full or no such cab"| G["Offer the nearest<br/>free cabs"]
+```
 
 `booking.py` locks the employee's roster row, then the cab rows in ascending id
 order (no deadlocks), re-reads occupancy under the lock, then writes. Two people
