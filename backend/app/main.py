@@ -5,8 +5,7 @@ from datetime import date
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -89,21 +88,14 @@ def create_app(
 
 
 def _serve_spa(app: FastAPI, static: Path) -> None:
-    """Serve the built web UI; unknown non-API paths get index.html (client-side routing)."""
+    """Serve the built web UI. Page routes fall back to index.html via the 404
+    handler (see api/errors.py), so the UI never shadows an API route."""
     index = static / "index.html"
     if not index.is_file():
         return
     if (static / "assets").is_dir():
         app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")
-
-    @app.get("/{path:path}", include_in_schema=False)
-    async def spa(path: str):
-        if path.startswith("api/"):
-            raise HTTPException(status_code=404)
-        candidate = (static / path).resolve()
-        if path and candidate.is_file() and candidate.is_relative_to(static.resolve()):
-            return FileResponse(candidate)
-        return FileResponse(index)
+    app.state.spa_index = index
 
 
 app = create_app()

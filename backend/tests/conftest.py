@@ -18,6 +18,7 @@ def settings() -> Settings:
         llm_provider="fake",
         demo_start="",
         sweeper_interval_s=0,
+        static_dir="/nonexistent",  # same behaviour on a laptop and inside the image
     )
 
 

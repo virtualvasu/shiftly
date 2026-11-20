@@ -5,7 +5,7 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 log = logging.getLogger("app")
@@ -18,7 +18,11 @@ SERVER_ERROR = (
 
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
-    async def http_error(_: Request, exc: StarletteHTTPException):
+    async def http_error(request: Request, exc: StarletteHTTPException):
+        index = getattr(request.app.state, "spa_index", None)
+        if (exc.status_code == 404 and index is not None and request.method == "GET"
+                and not request.url.path.startswith("/api/")):
+            return FileResponse(index)  # a page of the web UI (client-side route)
         detail = exc.detail if isinstance(exc.detail, str) else "Request failed."
         if exc.status_code == 404 and detail == "Not Found":
             detail = "Not found."
