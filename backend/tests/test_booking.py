@@ -118,3 +118,24 @@ async def test_apply_decision_twice_raises(seeded, clock):
     with pytest.raises(AlreadyDecided) as e:
         await apply_decision(seeded, "acme", pending.request_id, clock, kind="reject", actor_type="manager", actor_id="A-M01")
     assert e.value.status == "APPROVED_APPLIED"
+
+
+async def test_restore_cancelled_trip(seeded, clock):
+    await change(seeded, clock, "G-E01", change_type="cancel")
+    res = await change(seeded, clock, "G-E01", change_type="restore")
+    assert res.status == "APPLIED"
+    assert await roster_trip(seeded, "G-E01") == "globex-r1-1120-d-1900"
+
+
+async def test_restore_needs_a_cancelled_trip(seeded, clock):
+    res = await change(seeded, clock, "G-E01", change_type="restore")
+    assert res.status == "ALREADY_APPLIED"
+
+
+async def test_restore_checks_the_seat_again(seeded, clock):
+    await change(seeded, clock, "G-E01", change_type="cancel")
+    async with seeded.connection() as conn:  # the freed seat and the rest get taken
+        await conn.execute("UPDATE roster SET trip_id='globex-r1-1120-d-1900' WHERE employee_id IN ('G-F01','G-F02','G-F03','G-F04','G-F05')")
+    res = await change(seeded, clock, "G-E01", change_type="restore")
+    assert res.status == "REJECTED" and res.violation.code == "NO_SEAT"
+    assert await roster_trip(seeded, "G-E01") is None

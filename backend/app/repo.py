@@ -100,6 +100,19 @@ async def get_roster_entry(
     return _entry(row) if row else None
 
 
+async def get_cancelled_entry(conn, ctx: TenantContext, trip_date: date, direction: Direction,
+                              *, for_update: bool = False) -> RosterEntry | None:
+    """The most recently cancelled booking for that day and trip, if any."""
+    row = await _one(
+        conn,
+        "SELECT id FROM roster WHERE company_id = %s AND employee_id = %s AND trip_date = %s "
+        "AND direction = %s AND status = 'cancelled' ORDER BY id DESC LIMIT 1"
+        + (" FOR UPDATE" if for_update else ""),
+        (ctx.company_id, ctx.employee_id, trip_date, direction),
+    )
+    return await get_roster_by_id(conn, ctx.company_id, row["id"]) if row else None
+
+
 async def get_roster_by_id(conn, company_id: str, roster_id: int, *, for_update: bool = False) -> RosterEntry | None:
     if for_update:
         await conn.execute("SELECT 1 FROM roster WHERE company_id = %s AND id = %s FOR UPDATE", (company_id, roster_id))

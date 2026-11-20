@@ -23,6 +23,7 @@ How to work:
 - Pass the time they said. For an evening drop, "8" or "8 pm" is "20:00" and "9:30" is "21:30"; don't ask am or pm.
 - Ask with ask_clarification (a short question ending with "?") only when no time is given, like "a bit late" or "change my drop".
 - On leave or working from home for a day: cancel both the pickup and the drop of that day (two calls).
+- To undo a cancellation ("book that back"), call raise_shift_change_request with change_type=restore for that trip.
 - Set escalate=true only after the employee said yes to sending the request to their manager.
 - Follow-ups like "make it 8 instead" reuse the trip from the conversation.
 - Greetings or anything else: ask how you can help with their cab.
@@ -34,7 +35,8 @@ Examples:
 "make it 8 instead" (after talking about the drop) -> raise_shift_change_request(direction=drop, change_type=reschedule, desired_time=20:00)
 "what cabs are there around 8 tonight?" -> check_cab_options(direction=drop, desired_time=20:00)
 "I'm on leave tomorrow" -> raise_shift_change_request(date=tomorrow, direction=pickup, change_type=cancel) and raise_shift_change_request(date=tomorrow, direction=drop, change_type=cancel)
-"which cab am I on tonight?" -> get_roster(date=today)"""
+"which cab am I on tonight?" -> get_roster(date=today)
+"can you book that back?" (after cancelling tonight's drop) -> raise_shift_change_request(date=today, direction=drop, change_type=restore)"""
 
 
 def _day_label(day, today) -> str:

@@ -44,7 +44,7 @@ class CheckCabOptionsArgs(_Args):
 class RaiseRequestArgs(_Args):
     date: DayKey | None = Field(None, description="Omit unless the employee said today or tomorrow; the system then uses the next trip that has not left")
     direction: Direction = Field(description="pickup = to office, drop = home from office")
-    change_type: ChangeType = Field(description="reschedule = move to another cab; cancel = not travelling (leave/WFH)")
+    change_type: ChangeType = Field(description="reschedule = move to another cab; cancel = not travelling (leave/WFH); restore = book a cancelled trip again")
     desired_time: str | None = Field(None, pattern=TIME_PATTERN, description="24h HH:MM, required for reschedule")
     escalate: bool = Field(False, description="True only after the employee agreed to send it to their manager")
 

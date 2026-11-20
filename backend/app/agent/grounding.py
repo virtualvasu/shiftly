@@ -13,6 +13,14 @@ _DROP = re.compile(r"\bdrop(s|-?off)?\b", re.I)
 _PICKUP = re.compile(r"\bpick[\s-]?ups?\b", re.I)
 
 
+_LEAVE = re.compile(r"\b(on leave|leave tomorrow|leave today|wfh|work(ing)? from home|not coming|off (today|tomorrow))\b", re.I)
+
+
+def is_day_off(text: str) -> bool:
+    """The employee says they won't travel that day at all (leave, WFH)."""
+    return bool(_LEAVE.search(text))
+
+
 def mentions_tomorrow(texts: list[str]) -> bool:
     return any(_TOMORROW.search(t) for t in texts)
 

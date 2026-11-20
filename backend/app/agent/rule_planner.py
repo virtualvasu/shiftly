@@ -12,7 +12,12 @@ from app.agent.llm import LLMError, PlanResponse, ToolCall
 
 _TIME = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", re.I)
 _YES = re.compile(r"^\s*(yes|yeah|yep|ok|okay|sure|please|go ahead)\b", re.I)
-_CANCEL = re.compile(r"\b(cancel|leave|wfh|work(ing)? from home|not coming|off tomorrow)\b", re.I)
+_CANCEL = re.compile(
+    r"\b(cancel|leave|wfh|work(ing)? from home|not coming|off tomorrow|no cab|not travell?ing)\b"
+    r"|\bdon'?t need (a |the |my )?(cab|drop|pickup)",
+    re.I,
+)
+_RESTORE = re.compile(r"\b(book (that|it) back|restore|undo|re-?book)\b", re.I)
 _STATUS = re.compile(r"\bstatus\b", re.I)
 _WITHDRAW = re.compile(r"\bwithdraw\b", re.I)
 _ROSTER = re.compile(r"\b(which cab|my cab|what time is my|roster|my trips?)\b", re.I)
@@ -50,6 +55,13 @@ class RulePlanner:
                     args["desired_time"] = data["to"]
                 return PlanResponse([ToolCall("raise_shift_change_request", {**args, "escalate": True})])
             return _ask("Sorry, what would you like me to do?")
+        if _RESTORE.search(text):
+            last = _last_outcome(messages)
+            data = (last or {}).get("data", {})
+            if last and last.get("kind") == "applied" and data.get("change_type") == "cancel":
+                return PlanResponse([ToolCall("raise_shift_change_request", {
+                    "date": data["day"], "direction": data["direction"], "change_type": "restore"})])
+            return _ask("Which trip would you like me to book again, your pickup or your drop?")
         if _WITHDRAW.search(text):
             return PlanResponse([ToolCall("withdraw_request", {})])
         if _STATUS.search(text):

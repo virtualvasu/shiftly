@@ -54,6 +54,9 @@ def check_change(
         if target.occupancy >= seat_limit(company, target.trip):
             return Violation("NO_SEAT", "That cab has no free seat.", False)
 
+    if change_type == "restore" and target is not None and target.occupancy >= seat_limit(company, current):
+        return Violation("NO_SEAT", "That cab has no free seat any more.", False)
+
     late_for_current = now > cutoff_deadline(company, current)
     late_for_target = change_type == "reschedule" and now > cutoff_deadline(company, target.trip)
     if late_for_current or late_for_target:

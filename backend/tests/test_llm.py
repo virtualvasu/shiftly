@@ -163,3 +163,14 @@ async def test_rule_planner_reply_unavailable():
 
 def test_build_llm_fake_without_script_fails_cleanly():
     assert isinstance(build_llm(Settings(llm_provider="fake")), FakeLLM)
+
+
+async def test_rule_planner_no_cab_tonight():
+    calls = await _plan("i dont need cab for today night")
+    assert calls == [ToolCall("raise_shift_change_request", {"date": "today", "direction": "drop", "change_type": "cancel"})]
+
+
+async def test_rule_planner_book_that_back():
+    last = {"kind": "applied", "data": {"day": "tomorrow", "direction": "pickup", "change_type": "cancel"}}
+    assert await _plan("can u book that back?", last) == [ToolCall("raise_shift_change_request", {
+        "date": "tomorrow", "direction": "pickup", "change_type": "restore"})]

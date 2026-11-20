@@ -77,6 +77,10 @@ async def change_trip(
         await conn.execute("SET LOCAL lock_timeout = '1s'")
         company = await repo.get_company(conn, ctx.company_id)
         entry = await repo.get_roster_entry(conn, ctx, trip_date, direction, for_update=True)
+        if change_type == "restore":
+            if entry is not None:  # already booked: nothing to restore
+                return BookingResult("ALREADY_APPLIED", None, None, [], entry.trip, entry.trip)
+            return await _restore(conn, ctx, company, trip_date, direction, now, escalate, conversation_id)
         if entry is None:
             return BookingResult("NO_BOOKING")
         current = entry.trip
@@ -153,6 +157,38 @@ async def change_trip(
                              target.trip if target else None)
 
 
+async def _restore(conn, ctx, company, trip_date, direction, now, escalate, conversation_id) -> BookingResult:
+    """Book a cancelled trip again, if its seat is still free and it's not too late."""
+    entry = await repo.get_cancelled_entry(conn, ctx, trip_date, direction, for_update=True)
+    if entry is None:
+        return BookingResult("NO_BOOKING")
+    trip = entry.trip
+    await repo.lock_trips(conn, ctx.company_id, [trip.id])
+    target = TripOption(trip, await repo.occupancy(conn, ctx.company_id, trip.id))
+    violation = check_change(company, trip, target, "restore", now, now.date())
+    key = dedupe_key(ctx.employee_id, entry.id, "restore", trip.id)
+    base = {"company_id": ctx.company_id, "employee_id": ctx.employee_id, "conversation_id": conversation_id,
+            "roster_id": entry.id, "change_type": "restore", "from_trip_id": trip.id, "to_trip_id": trip.id,
+            "created_at": now, "dedupe_key": key}
+    if violation is None:
+        await conn.execute("UPDATE roster SET status = 'active' WHERE id = %s AND company_id = %s", (entry.id, ctx.company_id))
+        req = await repo.insert_request(conn, {**base, "id": new_request_id(), "status": "APPLIED"})
+        await repo.insert_audit(conn, ctx.company_id, "employee", ctx.employee_id, "applied", req.id, {"restore": trip.id})
+        return BookingResult("APPLIED", req.id, None, [], trip, trip, req)
+    if violation.escalatable and escalate:
+        existing = await repo.find_pending_for_roster(conn, ctx.company_id, entry.id)
+        if existing is not None:
+            return BookingResult("ALREADY_PENDING", existing.id, violation, [], trip, trip, existing)
+        rid = new_request_id()
+        req = await repo.insert_request(conn, {**base, "id": rid, "status": "PENDING_APPROVAL", "reason_code": violation.code,
+                                              "reason_text": violation.reason, "approval_thread_id": approval_thread_id(rid)})
+        await repo.insert_audit(conn, ctx.company_id, "employee", ctx.employee_id, "escalated", rid, {"restore": trip.id})
+        return BookingResult("PENDING_APPROVAL", rid, violation, [], trip, trip, req)
+    await repo.insert_audit(conn, ctx.company_id, "employee", ctx.employee_id, "rejected", None,
+                            {"restore": trip.id, "reason": violation.code})
+    return BookingResult("REJECTED", None, violation, [], trip, trip)
+
+
 async def apply_decision(
     pool: AsyncConnectionPool,
     company_id: str,
@@ -180,7 +216,15 @@ async def apply_decision(
         await repo.lock_trips(conn, company_id, [current.id] + ([target.id] if target else []))
 
         alternatives: list[TripOption] = []
-        if kind == "approve":
+        if kind == "approve" and req.change_type == "restore":
+            if entry.status == "active":
+                status = "EXPIRED"  # already booked again meanwhile
+            elif await repo.occupancy(conn, company_id, current.id) >= seat_limit(company, current):
+                status = "APPROVED_NO_SEAT"
+            else:
+                await conn.execute("UPDATE roster SET status = 'active' WHERE id = %s AND company_id = %s", (entry.id, company_id))
+                status = "APPROVED_APPLIED"
+        elif kind == "approve":
             if entry.status != "active" or entry.trip.id != req.from_trip_id:
                 status = "EXPIRED"  # the trip changed meanwhile; approving would undo it
             elif req.change_type == "cancel":

@@ -19,10 +19,11 @@ from pydantic import ValidationError
 
 from app import repo
 from app.agent import templates
-from app.agent.grounding import mentioned_direction, mentions_tomorrow
+from app.agent.grounding import is_day_off, mentioned_direction, mentions_tomorrow
 from app.agent.guard import reply_is_safe
 from app.agent.llm import InvalidModelOutput, LLMBudget, LLMClient, LLMError, ToolCall
 from app.agent.prompt import build_planner_messages, build_reply_messages
+from app.agent.rule_planner import RulePlanner
 from app.agent.timeparse import resolve_time
 from app.api.errors import SERVER_ERROR
 from app.agent.tools import TOOL_SPECS, ToolDeps, ToolOutcome, day_of, run_tool, tool_schemas
@@ -57,6 +58,7 @@ class ChatState(TypedDict, total=False):
     reply: str
     llm_calls: int
     tools_used: list[str]
+    fallback: bool  # the model was unavailable; the rule planner planned this turn
 
 
 @dataclass
@@ -125,8 +127,14 @@ async def plan_node(state: ChatState, runtime: Runtime[TurnDeps]) -> dict:
                 "content": f"Your previous output was invalid: {e}. Call the tools again with valid arguments.",
             }]
         except LLMError as e:
-            log.warning("planner unavailable: %s", e)
-            return {"reply": templates.llm_failure()}
+            # Down or rate-limited: plan with the built-in rule planner instead. Its plan
+            # goes through exactly the same validation and rules.
+            log.warning("planner unavailable (%s); using the rule planner", e)
+            try:
+                resp = await RulePlanner().plan(messages, [], timeout_s=0)
+                return {"calls": validate_plan(resp.tool_calls), "fallback": True}
+            except (LLMError, PlanError):
+                return {"reply": templates.llm_failure()}
     return {"reply": templates.not_understood()}
 
 
@@ -165,7 +173,30 @@ async def validate_node(state: ChatState, runtime: Runtime[TurnDeps]) -> dict:
             if not _escalation_was_offered(state.get("last_outcome"), args, c["desired_at"]):
                 c = {**c, "args": {**args, "escalate": False}}
         calls.append(c)
+    calls += await _other_trip_of_day_off(s, deps.ctx, calls, said, now)
     return {"calls": calls}
+
+
+async def _other_trip_of_day_off(s, ctx, calls: list[dict], said: list[str], now) -> list[dict]:
+    """'On leave tomorrow' means both trips. If the model cancelled only one, add the other
+    (when the employee didn't name one trip, and that trip exists and hasn't left)."""
+    if not is_day_off(said[0]) or mentioned_direction(said[:1]):
+        return []
+    cancels = {(c["args"]["date"], c["args"]["direction"]) for c in calls
+               if c["name"] == "raise_shift_change_request" and c["args"]["change_type"] == "cancel"}
+    extra = []
+    for day in {d for d, _ in cancels}:
+        trip_date = day_of(day, now.date())
+        for direction in ("pickup", "drop"):
+            if (day, direction) in cancels:
+                continue
+            async with s.pool.connection() as conn:
+                entry = await repo.get_roster_entry(conn, ctx, trip_date, direction)
+            if entry and entry.trip.scheduled_at > now:
+                extra.append({"name": "raise_shift_change_request", "desired_at": None,
+                              "args": {"date": day, "direction": direction, "change_type": "cancel",
+                                       "desired_time": None, "escalate": False}})
+    return extra
 
 
 def _grounded(args: dict, said: list[str]) -> dict:
@@ -197,7 +228,7 @@ def _escalation_was_offered(last: dict | None, args: dict, desired_at: str | Non
     d = last["data"]
     same_trip = (d.get("day"), d.get("direction"), d.get("change_type")) == (
         args["date"], args["direction"], args["change_type"])
-    if args["change_type"] == "cancel":
+    if args["change_type"] in ("cancel", "restore"):
         return same_trip
     wanted = datetime.fromisoformat(desired_at).strftime("%H:%M") if desired_at else None
     return same_trip and d.get("to") == wanted
@@ -234,7 +265,7 @@ async def respond_node(state: ChatState, runtime: Runtime[TurnDeps]) -> dict:
         draft = " ".join(templates.render(o, company) for o in outcomes) or templates.not_understood()
         final = draft
         rephrase = outcomes and all(o.kind in REPHRASE_KINDS for o in outcomes)
-        if rephrase and deps.remaining() > REPLY_TIMEOUT_S:
+        if rephrase and not state.get("fallback") and deps.remaining() > REPLY_TIMEOUT_S:
             try:
                 deps.budget.take()
                 text = (await deps.llm.reply(build_reply_messages(draft), timeout_s=REPLY_TIMEOUT_S)).strip()
@@ -308,7 +339,7 @@ async def handle_message(services, ctx: TenantContext, conversation_id: str, tex
 
             deps = TurnDeps(services=services, ctx=ctx, llm=services.llm, conversation_id=conversation_id)
             turn_input = {"user_text": text, "calls": [], "clarify": None, "outcomes": [], "reply": "",
-                          "llm_calls": 0, "tools_used": []}
+                          "llm_calls": 0, "tools_used": [], "fallback": False}
             config = {"configurable": {"thread_id": conversation_id}}
             try:
                 state = await asyncio.wait_for(

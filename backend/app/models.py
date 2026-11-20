@@ -3,7 +3,7 @@ from datetime import date, datetime
 from typing import Literal
 
 Direction = Literal["pickup", "drop"]
-ChangeType = Literal["reschedule", "cancel"]
+ChangeType = Literal["reschedule", "cancel", "restore"]
 RequestStatus = Literal[
     "APPLIED",
     "PENDING_APPROVAL",

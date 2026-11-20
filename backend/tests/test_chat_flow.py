@@ -161,11 +161,21 @@ async def test_text_only_false_claim_replaced(app_kwargs):
     assert r["reply"] == templates.not_understood()
 
 
-async def test_llm_down_plain_message(app_kwargs):
-    fake = FakeLLM([LLMError("429")])
-    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+async def test_llm_down_falls_back_to_rule_planner(app_kwargs):
+    # Rate-limited or down: the built-in rule planner takes over; same validation and rules.
+    fake = FakeLLM([LLMError("HTTP 429")], replies=["should not be used"])
+    async with running_app(**kw(app_kwargs, fake)) as (app, c):
         r = await (await chat_as(c, "A-E01")).say("move my drop to 9:30 pm")
-    assert r["reply"] == templates.llm_failure()
+        assert await roster_trip(app, "A-E01") == "acme-r1-1120-d-2130"
+    assert r["reply"].startswith("Done. Your drop today is now at 21:30")
+    assert fake.reply_calls == 0  # no second call to a model that just refused
+
+
+async def test_llm_down_and_unclear_asks(app_kwargs):
+    fake = FakeLLM([LLMError("HTTP 429")])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "A-E01")).say("hmm")
+    assert r["reply"].endswith("?")
 
 
 async def test_tool_timeout_plain_message(app_kwargs):
@@ -370,3 +380,33 @@ async def test_model_direction_contradicting_employee_is_corrected(app_kwargs):
     async with running_app(**kw(app_kwargs, fake)) as (_, c):
         r = await (await chat_as(c, "G-E02")).say("working from home today, please cancel my drop")
     assert r["reply"].startswith("Done. Your 19:00 drop today is cancelled.")
+
+
+async def test_leave_with_one_cancel_planned_cancels_both(app_kwargs):
+    # Real-model finding: "I'm on leave tomorrow" cancelled only the pickup.
+    fake = FakeLLM([plan(call("raise_shift_change_request", date="tomorrow", direction="pickup", change_type="cancel"))])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "G-E01")).say("I'm on leave tomorrow")
+    assert [(o["data"]["direction"], o["kind"]) for o in r["outcomes"]] == [("pickup", "applied"), ("drop", "applied")]
+
+
+async def test_leave_does_not_add_a_trip_that_already_left(app_kwargs, clock):
+    clock.advance(100)  # 19:10: today's 19:00 drop has left; nothing to add
+    fake = FakeLLM([plan(call("raise_shift_change_request", date="tomorrow", direction="drop", change_type="cancel"))])
+    async with running_app(**kw(app_kwargs, fake)) as (_, c):
+        r = await (await chat_as(c, "G-E01")).say("working from home tomorrow")
+    assert [o["data"]["direction"] for o in r["outcomes"]] == ["drop", "pickup"]
+
+
+async def test_book_cancelled_trip_back(app_kwargs):
+    fake = FakeLLM([
+        plan(call("raise_shift_change_request", date="today", direction="drop", change_type="cancel")),
+        plan(call("raise_shift_change_request", date="today", direction="drop", change_type="restore")),
+    ])
+    async with running_app(**kw(app_kwargs, fake)) as (app, c):
+        chat = await chat_as(c, "G-E01")
+        await chat.say("cancel my drop today")
+        r = await chat.say("can u book that back?")
+        trip = await roster_trip(app, "G-E01")
+    assert r["reply"].startswith("Done. Your 19:00 drop today is booked again, cab ")
+    assert trip == "globex-r1-1120-d-1900"

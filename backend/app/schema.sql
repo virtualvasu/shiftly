@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS shift_change_requests (
     employee_id         text NOT NULL REFERENCES employees(id),
     conversation_id     text REFERENCES conversations(id),
     roster_id           bigint NOT NULL REFERENCES roster(id),
-    change_type         text NOT NULL CHECK (change_type IN ('reschedule', 'cancel')),
+    change_type         text NOT NULL,
     from_trip_id        text NOT NULL REFERENCES trips(id),
     to_trip_id          text REFERENCES trips(id),
     status              text NOT NULL CHECK (status IN (
@@ -91,6 +91,11 @@ CREATE TABLE IF NOT EXISTS shift_change_requests (
     decided_at          timestamptz,
     note                text
 );
+-- Allowed change types (kept as a named constraint so existing databases pick up new types).
+ALTER TABLE shift_change_requests DROP CONSTRAINT IF EXISTS shift_change_requests_change_type_check;
+ALTER TABLE shift_change_requests ADD CONSTRAINT shift_change_requests_change_type_check
+    CHECK (change_type IN ('reschedule', 'cancel', 'restore'));
+
 -- At most one pending request for the same change: double-submits collapse.
 CREATE UNIQUE INDEX IF NOT EXISTS scr_one_pending
     ON shift_change_requests (company_id, dedupe_key) WHERE status = 'PENDING_APPROVAL';

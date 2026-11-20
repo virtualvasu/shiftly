@@ -57,7 +57,7 @@ def reply_is_safe(text: str, outcomes: list[ToolOutcome]) -> bool:
 
     for o in outcomes:
         if o.kind == "applied":
-            must = o.data["from"] if o.data.get("change_type") == "cancel" else o.data["to"]
+            must = o.data["from"] if o.data.get("change_type") in ("cancel", "restore") else o.data["to"]
             if must and must not in text:
                 return False
 

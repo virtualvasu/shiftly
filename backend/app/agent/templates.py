@@ -55,6 +55,8 @@ def render(o: ToolOutcome, company: Company) -> str:
     if k == "applied":
         if d.get("change_type") == "cancel":
             return f"Done. Your {d['from']} {direction} {day} is cancelled."
+        if d.get("change_type") == "restore":
+            return f"Done. Your {d['to']} {direction} {day} is booked again, cab {d['vehicle_no']}."
         return f"Done. Your {direction} {day} is now at {d['to']} (was {d['from']}), cab {d['vehicle_no']}."
     if k == "already_applied":
         return f"That's already done: your {direction} {day} is at {d['to']}."
@@ -130,11 +132,10 @@ STATUS_LABEL = {
 def _status(d: dict) -> str:
     if d.get("none"):
         return "You don't have any shift-change requests right now."
-    what = (
-        f"to cancel your {d['from']} {d['direction']}"
-        if d["change_type"] == "cancel"
-        else f"to move your {d['direction']} from {d['from']} to {d['to']}"
-    )
+    what = {
+        "cancel": f"to cancel your {d['from']} {d['direction']}",
+        "restore": f"to book your {d['from']} {d['direction']} again",
+    }.get(d["change_type"], f"to move your {d['direction']} from {d['from']} to {d['to']}")
     if d["status"] == "PENDING_APPROVAL":
         return (
             f"Request {d['request_id']} {what} is with your manager (sent at {d['created']}). "
@@ -171,6 +172,8 @@ def decision_message(status: str, d: dict) -> str:
     if status == "APPROVED_APPLIED":
         if d.get("change_type") == "cancel":
             return f"Your manager approved request {rid}. Your {d['from']} {direction} {day} is cancelled."
+        if d.get("change_type") == "restore":
+            return f"Your manager approved request {rid}. Your {d['from']} {direction} {day} is booked again."
         return f"Your manager approved request {rid}. Your {direction} {day} is now at {d['to']}, cab {d['vehicle_no']}."
     if status == "MANAGER_REJECTED":
         note = f": {d['note']}" if d.get("note") else ""
