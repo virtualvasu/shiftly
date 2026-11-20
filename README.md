@@ -9,99 +9,6 @@ Stack: Python 3.12, FastAPI, LangGraph, Postgres, JWT · React + shadcn/ui · Gr
 
 ---
 
-## Run it
-
-```bash
-docker compose up
-```
-
-Open **http://localhost:8000** (the app is called **Shiftly**), scroll to see how it works, and sign in with a demo account
-(password for all of them: `cabdesk-demo`).
-
-- Works **without any API key**: a small offline planner (regex) stands in for the LLM.
-- For the real agent, copy `.env.example` to `.env` and set `GROQ_API_KEY` (free at console.groq.com), then `docker compose up` again.
-- Port 8000 busy? `APP_PORT=8010 docker compose up`.
-- The demo clock starts at **17:30 India time** whatever the wall clock says (`DEMO_START` in `.env`), so the evening scenarios always work. "Simulate failures → Reset sample data" in the app re-seeds today's data.
-
-| Email | Who | Try |
-|---|---|---|
-| `arjun@globex.test` | Globex employee (1 h cut-off) | "move my drop to 7:30 pm" → applied |
-| `rohan@acme.test` | Acme employee (2 h cut-off) | same message → rule explained → "yes" → sent to manager |
-| `kavita@acme.test` | Acme transport manager | approve / reject Rohan's request |
-| `asha@acme.test` | Acme employee | "move my drop to 8 pm" → cab full, nearest free cabs offered |
-| `farah@globex.test` | Globex transport manager | sees only Globex requests |
-
-Also `meera@acme.test`, `sneha@globex.test`, `vikram@globex.test`. Passwords are stored as
-salted scrypt hashes; the token carries the company and role from the database.
-
-### Tests and evaluation
-
-```bash
-docker compose run --rm tests                          # 199 tests, fake LLM, real Postgres
-docker compose run --rm tests python -m eval.run       # evaluation set -> backend/eval/results.jsonl
-docker compose run --rm tests python -m eval.run --mode real --pause 15   # same cases against Groq (needs key)
-docker compose run --rm tests python -m eval.latency --n 40 --pause 15    # p95 latency with the real model
-docker compose run --rm tests python -m eval.summary   # compare the stored real-model runs
-```
-
-The evaluation set is `backend/eval/cases.jsonl`; results (one line per case with
-`id, input, expected, actual, pass, notes`) are in `backend/eval/results.jsonl`.
-The report is [docs/evaluation.md](docs/evaluation.md). The full design is in [docs/design.md](docs/design.md).
-
----
-
-## Evaluation and how it improved
-
-Two questions, measured separately:
-
-1. **Is the system correct whatever the model does?** The 41 cases with a scripted
-   model: rules, isolation, approval after restart, failures, races. **41/41**, plus 199 automated tests.
-2. **How good is the real model at driving it?** The same cases against Groq
-   (37 of them; 4 need a deliberately misbehaving model and only run scripted).
-
-Every real-model run is kept in [`backend/eval/history/`](backend/eval/history/) and
-the table below is `python -m eval.summary` over those files:
-
-| Category | Run 1 | Run 2 |
-|---|---|---|
-| approval | 6/6 | 6/6 |
-| capacity | 4/4 | 4/4 |
-| clarify | 2/5 | 3/5 |
-| cutoff | 1/5 | 4/5 |
-| failure | 1/2 | 2/2 |
-| isolation | 7/7 | 6/7* |
-| safety | 1/2 | 2/2 |
-| tool_selection | 4/6 | 4/6 |
-| **Total** | **26/37** | **31/37** |
-
-\* not an isolation failure: I ran the unit tests during that run, which reset the shared test database mid-case.
-
-What each run taught, and what changed:
-
-| Before | What the real model did | What I changed | After |
-|---|---|---|---|
-| First call | Groq had retired Llama 3.3, so every call returned 404. The agent answered "trouble understanding, nothing was changed" as designed. | Compared the three models still served; `openai/gpt-oss-20b` was correct and fastest | — |
-| Unpaced run | 24 turns refused with HTTP 429: the free tier allows 8,000 tokens/min (~4 messages/min) | Runs paced at one turn every 15 s; rate-limited replies never count as model quality | — |
-| Run 1 | Asked "which drop, today or tomorrow?" and "8 AM or PM?", checked options instead of booking, and once **changed tomorrow's drop** for "the 7:30 pm drop instead" | The day is decided **in code** (next trip that hasn't left) unless the employee says it; prompt gets rules and six worked examples | 26 → 31 |
-| Run 2 | Still sometimes set "tomorrow" or "pickup" that the employee never wrote ("cancel my drop" → pickup) | Code grounds the model's choice in the employee's words: an unsaid "tomorrow" is dropped, a contradicted pickup/drop is corrected | covered by scripted tests; not re-run on the real model |
-
-Across all runs the guarantees held: no change was ever applied against a rule,
-and no isolation probe leaked. The remaining failures are the model choosing a
-weaker but safe action (asking a question it didn't need to, or cancelling one trip
-of two); they are listed case by case in [docs/evaluation.md](docs/evaluation.md).
-
-**Latency** (40 real messages, `backend/eval/latency.json`): **p95 1.51 s**, p50 1.07 s,
-max 2.90 s, never more than 2 LLM calls. 5 of the 40 were rate-limited by the free tier
-and are reported separately, not counted as fast answers.
-
-**Bugs found on the way,** each fixed with a test that failed first: 5 while building
-(e.g. a Postgres lock subtlety that made a double-submit look like "no booking"),
-1 by checking out the repo fresh (UI routes shadowing API routes inside Docker),
-and 7 by an independent code review (e.g. "drop at 00:30" looping on a question,
-a departed cab treated as escalatable). Details in [docs/evaluation.md](docs/evaluation.md).
-
----
-
 ## How it works
 
 **The LLM understands and talks. Code decides.**
@@ -268,6 +175,58 @@ transactions on Postgres (run repeatedly while building).
 
 ---
 
+## Evaluation and how it improved
+
+Two questions, measured separately:
+
+1. **Is the system correct whatever the model does?** The 41 cases with a scripted
+   model: rules, isolation, approval after restart, failures, races. **41/41**, plus 199 automated tests.
+2. **How good is the real model at driving it?** The same cases against Groq
+   (37 of them; 4 need a deliberately misbehaving model and only run scripted).
+
+Every real-model run is kept in [`backend/eval/history/`](backend/eval/history/) and
+the table below is `python -m eval.summary` over those files:
+
+| Category | Run 1 | Run 2 |
+|---|---|---|
+| approval | 6/6 | 6/6 |
+| capacity | 4/4 | 4/4 |
+| clarify | 2/5 | 3/5 |
+| cutoff | 1/5 | 4/5 |
+| failure | 1/2 | 2/2 |
+| isolation | 7/7 | 6/7* |
+| safety | 1/2 | 2/2 |
+| tool_selection | 4/6 | 4/6 |
+| **Total** | **26/37** | **31/37** |
+
+\* not an isolation failure: I ran the unit tests during that run, which reset the shared test database mid-case.
+
+What each run taught, and what changed:
+
+| Before | What the real model did | What I changed | After |
+|---|---|---|---|
+| First call | Groq had retired Llama 3.3, so every call returned 404. The agent answered "trouble understanding, nothing was changed" as designed. | Compared the three models still served; `openai/gpt-oss-20b` was correct and fastest | — |
+| Unpaced run | 24 turns refused with HTTP 429: the free tier allows 8,000 tokens/min (~4 messages/min) | Runs paced at one turn every 15 s; rate-limited replies never count as model quality | — |
+| Run 1 | Asked "which drop, today or tomorrow?" and "8 AM or PM?", checked options instead of booking, and once **changed tomorrow's drop** for "the 7:30 pm drop instead" | The day is decided **in code** (next trip that hasn't left) unless the employee says it; prompt gets rules and six worked examples | 26 → 31 |
+| Run 2 | Still sometimes set "tomorrow" or "pickup" that the employee never wrote ("cancel my drop" → pickup) | Code grounds the model's choice in the employee's words: an unsaid "tomorrow" is dropped, a contradicted pickup/drop is corrected | covered by scripted tests; not re-run on the real model |
+
+Across all runs the guarantees held: no change was ever applied against a rule,
+and no isolation probe leaked. The remaining failures are the model choosing a
+weaker but safe action (asking a question it didn't need to, or cancelling one trip
+of two); they are listed case by case in [docs/evaluation.md](docs/evaluation.md).
+
+**Latency** (40 real messages, `backend/eval/latency.json`): **p95 1.51 s**, p50 1.07 s,
+max 2.90 s, never more than 2 LLM calls. 5 of the 40 were rate-limited by the free tier
+and are reported separately, not counted as fast answers.
+
+**Bugs found on the way,** each fixed with a test that failed first: 5 while building
+(e.g. a Postgres lock subtlety that made a double-submit look like "no booking"),
+1 by checking out the repo fresh (UI routes shadowing API routes inside Docker),
+and 7 by an independent code review (e.g. "drop at 00:30" looping on a question,
+a departed cab treated as escalatable). Details in [docs/evaluation.md](docs/evaluation.md).
+
+---
+
 ## Design decisions and trade-offs
 
 1. **Planner + executor instead of a free ReAct loop.** I lose some flexibility (the model can't chain arbitrary tool calls), and I gain a hard call cap, predictable latency, and facts that never come from the model. For a desk that must not quote the wrong rule, that is the right trade.
@@ -278,27 +237,43 @@ transactions on Postgres (run repeatedly while building).
 6. **App-level tenant scoping instead of Postgres row-level security.** Simpler to read and change, and proven by tests. RLS would be my next step for defence in depth.
 7. **Escalation needs consent, enforced in code.** If the model sets `escalate=true` before the employee was told the rule and said yes, code ignores it and returns the explanation first.
 
-## Limitations and next steps
+---
 
-- Only today's and tomorrow's trips, only moves within the employee's own route. Address or route changes are out of scope.
-- No notification channel besides the chat (the UI polls every 3 s).
-- The offline planner is deliberately basic; it exists so the app runs without a key.
-- Audit log timestamps use the database clock, message timestamps the app (demo) clock.
-- Next: RLS, waitlist notification when an approved change frees a seat, per-company escalation SLAs.
+## Run it
 
-## Layout
-
+```bash
+docker compose up
 ```
-backend/app/
-  auth.py            JWT, TenantContext
-  rules.py           cut-off and capacity rules (pure)
-  booking.py         the only roster writer: locks, idempotency, decisions
-  repo.py            tenant-scoped SQL
-  agent/             planner prompt, tools, LLM clients, graph, templates, guard
-  approval/          approval workflow (interrupt/resume) and expiry sweeper
-  api/               HTTP routes and error handling
-backend/tests/       pytest (fake LLM, real Postgres)
-backend/eval/        cases.jsonl, runner, results, latency benchmark
-frontend/            React + Vite + shadcn/ui
-docs/                design.md, evaluation.md
+
+Open **http://localhost:8000** (the app is called **Shiftly**), scroll to see how it works, and sign in with a demo account
+(password for all of them: `cabdesk-demo`).
+
+- Works **without any API key**: a small offline planner (regex) stands in for the LLM.
+- For the real agent, copy `.env.example` to `.env` and set `GROQ_API_KEY` (free at console.groq.com), then `docker compose up` again.
+- Port 8000 busy? `APP_PORT=8010 docker compose up`.
+- The demo clock starts at **17:30 India time** whatever the wall clock says (`DEMO_START` in `.env`), so the evening scenarios always work. "Simulate failures → Reset sample data" in the app re-seeds today's data.
+
+| Email | Who | Try |
+|---|---|---|
+| `arjun@globex.test` | Globex employee (1 h cut-off) | "move my drop to 7:30 pm" → applied |
+| `rohan@acme.test` | Acme employee (2 h cut-off) | same message → rule explained → "yes" → sent to manager |
+| `kavita@acme.test` | Acme transport manager | approve / reject Rohan's request |
+| `asha@acme.test` | Acme employee | "move my drop to 8 pm" → cab full, nearest free cabs offered |
+| `farah@globex.test` | Globex transport manager | sees only Globex requests |
+
+Also `meera@acme.test`, `sneha@globex.test`, `vikram@globex.test`. Passwords are stored as
+salted scrypt hashes; the token carries the company and role from the database.
+
+### Tests and evaluation
+
+```bash
+docker compose run --rm tests                          # 199 tests, fake LLM, real Postgres
+docker compose run --rm tests python -m eval.run       # evaluation set -> backend/eval/results.jsonl
+docker compose run --rm tests python -m eval.run --mode real --pause 15   # same cases against Groq (needs key)
+docker compose run --rm tests python -m eval.latency --n 40 --pause 15    # p95 latency with the real model
+docker compose run --rm tests python -m eval.summary   # compare the stored real-model runs
 ```
+
+The evaluation set is `backend/eval/cases.jsonl`; results (one line per case with
+`id, input, expected, actual, pass, notes`) are in `backend/eval/results.jsonl`.
+The report is [docs/evaluation.md](docs/evaluation.md). The full design is in [docs/design.md](docs/design.md).
