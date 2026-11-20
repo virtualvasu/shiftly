@@ -3,13 +3,14 @@ from datetime import date
 
 from fastapi import FastAPI, Request
 
-from app.api import auth_routes, me_routes
+from app.api import auth_routes, dev_routes, me_routes
 from app.api.errors import install_error_handlers
 from app.clock import build_clock
 from app.config import Settings, get_settings
 from app.db import create_pool, init_schema
 from app.seed import seed
-from app.services import Services
+from app.faults import FaultInjector
+from app.services import DirectApprovals, Services
 
 
 def create_app(
@@ -28,7 +29,9 @@ def create_app(
         app_clock = clock or build_clock(settings)
         if settings.seed_on_start or seed_today:
             await seed(pool, seed_today or app_clock.now().date())
-        app.state.services = Services(settings=settings, pool=pool, clock=app_clock)
+        services = Services(settings=settings, pool=pool, clock=app_clock, faults=FaultInjector())
+        services.approvals = DirectApprovals(services)
+        app.state.services = services
         try:
             yield
         finally:
@@ -38,6 +41,7 @@ def create_app(
     install_error_handlers(app)
     if settings.dev_auth:
         app.include_router(auth_routes.router)
+        app.include_router(dev_routes.router)
     app.include_router(me_routes.router)
 
     @app.get("/api/health")
