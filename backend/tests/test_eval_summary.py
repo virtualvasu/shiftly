@@ -19,3 +19,14 @@ def test_summary_table_by_category(tmp_path):
         "| isolation | 1/1 | 1/1 |",
         "| **Total** | **1/2** | **2/2** |",
     ]
+
+
+def test_latency_summary_separates_unavailable_replies():
+    from eval.latency import summarize
+
+    answered = [(0.5 + i * 0.05, 2, False) for i in range(19)] + [(3.0, 2, False)]
+    unavailable = [(0.2, 1, True)] * 3
+    s = summarize(answered + unavailable)
+    assert s["answered"] == 20 and s["model_unavailable"] == 3
+    assert s["p95_s"] == 1.4 and s["max_s"] == 3.0
+    assert s["max_llm_calls"] == 2

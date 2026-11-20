@@ -18,6 +18,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from app.agent import templates
 from app.clock import IST, FixedClock
 from app.config import Settings
 from app.db import create_pool, reset_schema
@@ -41,6 +42,26 @@ MESSAGES = [
 ]
 
 
+def summarize(samples: list[tuple[float, int, bool]]) -> dict:
+    """samples: (seconds, llm_calls, model_unavailable).
+
+    Replies where the model was unavailable (e.g. free-tier rate limit) come back
+    fast with a fallback message; they are counted separately so they can't make
+    the p95 look better than the model really is.
+    """
+    answered = [s for s in samples if not s[2]]
+    times = [s[0] for s in answered]
+    return {
+        "answered": len(answered),
+        "model_unavailable": len(samples) - len(answered),
+        "p50_s": round(percentile(times, 50), 3),
+        "p95_s": round(percentile(times, 95), 3),
+        "max_s": round(max(times), 3),
+        "max_llm_calls": max(s[1] for s in samples),
+        "mean_llm_calls": round(sum(s[1] for s in answered) / len(answered), 2),
+    }
+
+
 def percentile(values: list[float], p: float) -> float:
     s = sorted(values)
     return s[max(0, math.ceil(p / 100 * len(s)) - 1)]
@@ -55,7 +76,7 @@ async def measure(n: int, pause_s: float) -> dict:
     await pool.close()
 
     clock = FixedClock(datetime(2026, 11, 20, 17, 30, tzinfo=IST))
-    times, calls = [], []
+    samples = []
     async with running_app(settings=settings, clock=clock, seed_today=TODAY) as (app, c):
         tokens = {}
         for i in range(n):
@@ -66,19 +87,13 @@ async def measure(n: int, pause_s: float) -> dict:
                 tokens[emp] = (await c.post("/api/auth/token", json={"employee_id": emp})).json()["token"]
             t0 = time.monotonic()
             r = await c.post("/api/chat", json={"message": text}, headers={"Authorization": f"Bearer {tokens[emp]}"})
-            times.append(time.monotonic() - t0)
-            calls.append(r.json().get("llm_calls", 0))
-            print(f"{times[-1]:5.2f}s  {calls[-1]} calls  {emp}: {text}", flush=True)
+            body = r.json()
+            sample = (time.monotonic() - t0, body.get("llm_calls", 0), body.get("reply") == templates.llm_failure())
+            samples.append(sample)
+            flag = "  (model unavailable)" if sample[2] else ""
+            print(f"{sample[0]:5.2f}s  {sample[1]} calls  {emp}: {text}{flag}", flush=True)
             await asyncio.sleep(pause_s)
-    return {
-        "n": n,
-        "model": settings.groq_model,
-        "p50_s": round(percentile(times, 50), 3),
-        "p95_s": round(percentile(times, 95), 3),
-        "max_s": round(max(times), 3),
-        "max_llm_calls": max(calls),
-        "mean_llm_calls": round(sum(calls) / len(calls), 2),
-    }
+    return {"n": n, "model": settings.groq_model, **summarize(samples)}
 
 
 def main(argv=None) -> int:

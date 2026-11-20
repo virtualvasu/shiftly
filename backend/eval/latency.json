@@ -1,0 +1,11 @@
+{
+  "n": 40,
+  "model": "openai/gpt-oss-20b",
+  "answered": 35,
+  "model_unavailable": 5,
+  "p50_s": 1.07,
+  "p95_s": 1.51,
+  "max_s": 2.9,
+  "max_llm_calls": 2,
+  "mean_llm_calls": 1.54
+}
