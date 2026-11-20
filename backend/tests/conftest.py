@@ -99,3 +99,45 @@ async def seeded(pool):
 async def fetchall(pool, sql, *args):
     async with pool.connection() as conn:
         return await (await conn.execute(sql, args)).fetchall()
+
+
+def call(name: str, **args):
+    from app.agent.llm import ToolCall
+
+    return ToolCall(name, args)
+
+
+def plan(*calls):
+    from app.agent.llm import PlanResponse
+
+    return PlanResponse(list(calls))
+
+
+def move(time: str, *, day="today", direction="drop", escalate=False, **extra):
+    args = {"date": day, "direction": direction, "change_type": "reschedule", "desired_time": time, **extra}
+    if escalate:
+        args["escalate"] = True
+    return plan(call("raise_shift_change_request", **args))
+
+
+class Chat:
+    """Talks to /api/chat as one employee and checks the LLM-call cap on every turn."""
+
+    def __init__(self, client, token):
+        self.client, self.token, self.conversation_id = client, token, None
+
+    async def say(self, text: str, expect_status: int = 200) -> dict:
+        body = {"message": text}
+        if self.conversation_id:
+            body["conversation_id"] = self.conversation_id
+        r = await self.client.post("/api/chat", json=body, headers=bearer(self.token))
+        assert r.status_code == expect_status, r.text
+        data = r.json()
+        if r.status_code == 200:
+            assert data["llm_calls"] <= 4
+            self.conversation_id = data["conversation_id"]
+        return data
+
+
+async def chat_as(client, employee_id: str) -> Chat:
+    return Chat(client, await get_token(client, employee_id))

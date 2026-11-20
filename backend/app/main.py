@@ -3,7 +3,10 @@ from datetime import date
 
 from fastapi import FastAPI, Request
 
-from app.api import auth_routes, dev_routes, me_routes
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+from app.agent.graph import build_chat_graph
+from app.api import auth_routes, chat_routes, dev_routes, me_routes
 from app.agent.llm import build_llm
 from app.api.errors import install_error_handlers
 from app.clock import build_clock
@@ -33,6 +36,9 @@ def create_app(
         services = Services(settings=settings, pool=pool, clock=app_clock, faults=FaultInjector())
         services.approvals = DirectApprovals(services)
         services.llm = build_llm(settings, llm)
+        services.checkpointer = AsyncPostgresSaver(pool)
+        await services.checkpointer.setup()
+        services.chat_graph = build_chat_graph(services.checkpointer)
         app.state.services = services
         try:
             yield
@@ -45,6 +51,7 @@ def create_app(
         app.include_router(auth_routes.router)
         app.include_router(dev_routes.router)
     app.include_router(me_routes.router)
+    app.include_router(chat_routes.router)
 
     @app.get("/api/health")
     async def health(request: Request):
